@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Генератор Gmail-адресов</title>
+<style>
+  :root { --bg:#f4f6fb; --card:#fff; --text:#1d2433; --muted:#6b7385; --accent:#d93025; --accent2:#b3261e; --border:#dde2ec; --ok:#188038; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151c; --card:#1c212b; --text:#e8ebf2; --muted:#9aa3b5; --border:#2e3545; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:var(--bg); color:var(--text);
+         font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+         display:flex; justify-content:center; padding:32px 16px; }
+  .card { width:100%; max-width:520px; background:var(--card); border:1px solid var(--border);
+          border-radius:16px; padding:24px; box-shadow:0 8px 30px rgba(0,0,0,.06); }
+  h1 { margin:0 0 4px; font-size:22px; }
+  p.sub { margin:0 0 20px; color:var(--muted); font-size:14px; line-height:1.45; }
+  label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
+  input[type=email] { width:100%; padding:12px 14px; font-size:16px; border-radius:10px;
+          border:1px solid var(--border); background:transparent; color:var(--text); }
+  input[type=email]:focus { outline:2px solid var(--accent); border-color:transparent; }
+  .opts { display:flex; gap:16px; flex-wrap:wrap; margin:14px 0 18px; font-size:14px; }
+  .opts label { display:flex; align-items:center; gap:6px; margin:0; color:var(--text); cursor:pointer; }
+  button.main { width:100%; padding:16px; font-size:18px; font-weight:600; border:0; border-radius:12px;
+          background:var(--accent); color:#fff; cursor:pointer; transition:background .15s, transform .05s; }
+  button.main:hover { background:var(--accent2); }
+  button.main:active { transform:scale(.98); }
+  .result { margin-top:20px; display:none; }
+  .result.show { display:block; }
+  .addr { display:flex; gap:8px; align-items:center; padding:14px; border:1px dashed var(--accent);
+          border-radius:10px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:15px;
+          word-break:break-all; }
+  .addr span { flex:1; }
+  button.copy { border:1px solid var(--border); background:transparent; color:var(--text);
+          padding:8px 12px; border-radius:8px; cursor:pointer; font-size:13px; white-space:nowrap; }
+  button.copy.done { color:var(--ok); border-color:var(--ok); }
+  .err { color:var(--accent); font-size:13px; margin-top:8px; min-height:1em; }
+  h2 { font-size:14px; color:var(--muted); margin:24px 0 8px; font-weight:600;
+       display:flex; justify-content:space-between; align-items:center; }
+  h2 button { border:0; background:none; color:var(--muted); cursor:pointer; font-size:12px; text-decoration:underline; }
+  ul { list-style:none; margin:0; padding:0; }
+  li { display:flex; justify-content:space-between; gap:8px; align-items:center; padding:8px 0;
+       border-top:1px solid var(--border); font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px;
+       word-break:break-all; }
+  .note { margin-top:20px; font-size:12px; color:var(--muted); line-height:1.5; }
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>📧 Генератор Gmail-адресов</h1>
+  <p class="sub">Введите свою почту Gmail один раз — и по нажатию кнопки получайте новые случайные
+     адреса <b>@gmail.com</b>. Все письма на них придут в ваш ящик.</p>
+
+  <label for="base">Ваш адрес Gmail</label>
+  <input id="base" type="email" placeholder="ivan.petrov@gmail.com" autocomplete="email">
+
+  <div class="opts">
+    <label><input type="checkbox" id="useDots" checked> Случайные точки</label>
+    <label><input type="checkbox" id="usePlus" checked> Случайный +тег</label>
+  </div>
+
+  <button class="main" id="gen">Создать почту</button>
+  <div class="err" id="err"></div>
+
+  <div class="result" id="result">
+    <div class="addr"><span id="out"></span><button class="copy" id="copy">Копировать</button></div>
+  </div>
+
+  <h2>История <button id="clear">очистить</button></h2>
+  <ul id="history"></ul>
+
+  <p class="note">Как это работает: Gmail игнорирует точки в имени и всё, что после «+».
+    Например, <code>i.van.petrov+x7k2@gmail.com</code> доставляется в <code>ivanpetrov@gmail.com</code>.
+    Удобно для регистраций на сайтах и фильтрации спама.</p>
+</main>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+  };
+
+  const ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  function rnd(n) { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; }
+  function randomTag(len) { let s = ''; for (let i = 0; i < len; i++) s += ALPHABET[rnd(ALPHABET.length)]; return s; }
+
+  function parseGmail(email) {
+    const m = String(email).trim().toLowerCase().match(/^([a-z0-9.+]+)@(gmail\.com|googlemail\.com)$/);
+    if (!m) return null;
+    const user = m[1].split('+')[0].replace(/\./g, '');
+    if (user.length < 2) return null;
+    return { user, domain: 'gmail.com' };
+  }
+
+  function randomDots(user) {
+    // Точки между буквами: не в начале, не в конце, не подряд
+    let out = user[0];
+    for (let i = 1; i < user.length; i++) {
+      if (rnd(3) === 0) out += '.';
+      out += user[i];
+    }
+    return out;
+  }
+
+  function generate(base, dots, plus) {
+    let local = dots ? randomDots(base.user) : base.user;
+    if (plus) local += '+' + randomTag(6);
+    return local + '@' + base.domain;
+  }
+
+  let history = store.get('gmailgen.history', []);
+  $('base').value = store.get('gmailgen.base', '');
+
+  function renderHistory() {
+    const ul = $('history');
+    ul.innerHTML = '';
+    history.forEach(addr => {
+      const li = document.createElement('li');
+      const s = document.createElement('span'); s.textContent = addr;
+      const b = document.createElement('button'); b.className = 'copy'; b.textContent = 'Копировать';
+      b.onclick = () => copy(addr, b);
+      li.append(s, b); ul.append(li);
+    });
+  }
+
+  async function copy(text, btn) {
+    try { await navigator.clipboard.writeText(text); }
+    catch {
+      const t = document.createElement('textarea'); t.value = text; document.body.append(t);
+      t.select(); document.execCommand('copy'); t.remove();
+    }
+    const old = btn.textContent; btn.textContent = 'Скопировано ✓'; btn.classList.add('done');
+    setTimeout(() => { btn.textContent = old; btn.classList.remove('done'); }, 1200);
+  }
+
+  $('gen').onclick = () => {
+    $('err').textContent = '';
+    const base = parseGmail($('base').value);
+    if (!base) { $('err').textContent = 'Введите корректный адрес вида имя@gmail.com'; return; }
+    const dots = $('useDots').checked, plus = $('usePlus').checked;
+    if (!dots && !plus) { $('err').textContent = 'Выберите хотя бы один вариант (точки или +тег)'; return; }
+    if (dots && !plus && base.user.length < 3) { $('err').textContent = 'Имя слишком короткое для точек — включите +тег'; return; }
+
+    let addr, tries = 0;
+    do { addr = generate(base, dots, plus); tries++; }
+    while ((history.includes(addr) || addr.split('@')[0] === base.user) && tries < 50);
+
+    store.set('gmailgen.base', $('base').value.trim());
+    $('out').textContent = addr;
+    $('result').classList.add('show');
+    history.unshift(addr); history = history.slice(0, 20);
+    store.set('gmailgen.history', history);
+    renderHistory();
+    copy(addr, $('copy'));
+  };
+  $('copy').onclick = () => copy($('out').textContent, $('copy'));
+  $('clear').onclick = () => { history = []; store.set('gmailgen.history', history); renderHistory(); };
+  $('base').addEventListener('keydown', e => { if (e.key === 'Enter') $('gen').click(); });
+  renderHistory();
+})();
+</script>
+</body>
+</html>
