@@ -424,6 +424,7 @@
       steamClosed:'Окно Steam закрыто', openSteam:'Открыть регистрацию Steam ↗',
       stepMail:'Почта создана', stepCaptcha:'Отметьте согласие и пройдите капчу в окне Steam',
       stepVerify:'Подтверждение почты (автоматически)', stepFinish:'Логин и пароль подставлены — нажмите «Готово»',
+      badSteamPass:'Пароль Steam: только латинские буквы и цифры', steamMailTimeout:'Письмо Steam не найдено — откройте почту Outlook и нажмите ссылку сами',
       badLogin:'Логин Steam: 3–32 символа, только латиница, цифры и _', badPass:'Пароль Steam: минимум 8 символов'
     },
     en: {
@@ -468,6 +469,7 @@
       steamClosed:'Steam window closed', openSteam:'Open Steam sign-up ↗',
       stepMail:'Mailbox created', stepCaptcha:'Tick the agreement and solve the captcha in the Steam window',
       stepVerify:'Email confirmation (automatic)', stepFinish:'Login and password filled in — press “Done”',
+      badSteamPass:'Steam password: Latin letters and digits only', steamMailTimeout:'Steam email not found — open Outlook mail and click the link yourself',
       badLogin:'Steam login: 3–32 chars, Latin letters, digits and _ only', badPass:'Steam password: at least 8 characters'
     }
   };
@@ -518,6 +520,13 @@
   const WORDS = ['nexus','neon','pixel','cyber','nova','orbit','quantum','vector','flux','echo','zen','byte',
                  'storm','shadow','pulse','astro','blaze','frost','lunar','spark','vortex','drift','prism'];
   function randomLogin() { let s = pick(WORDS) + pick(WORDS); for (let i = 0; i < 4; i++) s += pick('0123456789'); return s; }
+  // Steam не принимает некоторые спецсимволы — для Steam только буквы и цифры
+  function steamPassword(len = 10) {
+    const chars = [pick(LOWER), pick(UPPER), pick(DIGIT)];
+    while (chars.length < len) chars.push(pick(LOWER + UPPER + DIGIT));
+    for (let i = chars.length - 1; i > 0; i--) { const j = rnd(i + 1); [chars[i], chars[j]] = [chars[j], chars[i]]; }
+    return chars.join('');
+  }
   function steamLogin() { let s = pick(WORDS) + '_' + pick(WORDS); for (let i = 0; i < 3; i++) s += pick('0123456789'); return s; }
 
   // ---------- API mail.tm ----------
@@ -918,13 +927,14 @@
     });
   }
   $('sLoginGen').onclick = () => { $('sLogin').value = steamLogin(); };
-  $('sPassGen').onclick = () => { $('sPass').value = randomPassword(10); };
+  $('sPassGen').onclick = () => { $('sPass').value = steamPassword(10); };
   $('steamGo').onclick = async () => {
     let login = $('sLogin').value.trim(), pass = $('sPass').value;
     if (!login) { login = steamLogin(); $('sLogin').value = login; }
-    if (!pass) { pass = randomPassword(10); $('sPass').value = pass; }
+    if (!pass) { pass = steamPassword(10); $('sPass').value = pass; }
     if (!/^[A-Za-z0-9_]{3,32}$/.test(login)) return setStatus('steamStatus', 'badLogin', 'err');
     if (pass.length < 8) return setStatus('steamStatus', 'badPass', 'err');
+    if (!/^[A-Za-z0-9]+$/.test(pass)) return setStatus('steamStatus', 'badSteamPass', 'err');
     const own = settings.steamSrc === 'outlook';
     const ol = own ? outlooks.find(o => o.address === $('olSelect').value) : null;
     if (own && !ol) return setStatus('steamStatus', 'noOutlook', 'err');
@@ -943,6 +953,7 @@
       setSteps('captcha');
       if (desktop) {
         await desktop.openSteam({ email: acc.address, login, pass, lang: settings.lang });
+        if (own && settings.autoverify && desktop.watchOutlookSteam) desktop.watchOutlookSteam(ol.partition);
         setStatus('steamStatus', 'steamOpened');
       } else {
         await copyText(acc.address);
@@ -956,6 +967,8 @@
   };
   if (desktop && desktop.onSteamState) desktop.onSteamState(s => {
     if (!steamFlow) return;
+    if (s.stage === 'mailfound') { setSteps('verify'); setStatus('steamStatus', 'steamVerifying'); return; }
+    if (s.stage === 'mailtimeout') { setStatus('steamStatus', 'steamMailTimeout', 'err'); return; }
     if (s.stage === 'account' || s.stage === 'verified') { setSteps('finish'); setStatus('steamStatus', 'steamVerified', 'ok'); }
     else if (s.stage === 'closed') { setStatus('steamStatus', 'steamClosed'); steamFlow = null; }
   });

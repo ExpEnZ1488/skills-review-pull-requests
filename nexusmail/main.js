@@ -34,7 +34,8 @@ function createWindow() {
 const STEAM_VERIFY_RE = /^https:\/\/([a-z0-9-]+\.)*(steampowered|steamcommunity)\.com\/.*(newaccountverification|verif)/i;
 // Outlook может оборачивать ссылки в safelinks — достаём настоящий адрес
 function unwrapLink(url) {
-  try { const u = new URL(url); if (/safelinks/i.test(u.hostname) && u.searchParams.get('url')) return u.searchParams.get('url'); } catch {}
+  try { const u = new URL(url); if (/safelinks/i.test(u.hostname) && u.searchParams.get('url')) url = u.searchParams.get('url'); } catch {}
+  for (let i = 0; i < 3 && /^https?%3A/i.test(url); i++) { try { url = decodeURIComponent(url); } catch { break; } }
   return url;
 }
 
@@ -142,8 +143,9 @@ function outlookFillScript(d, lang) {
   const text = lang === 'en'
     ? 'NexusMail fills in the form and presses “Next”. Solve the captcha when it appears.'
     : 'NexusMail заполняет форму и нажимает «Далее». Когда появится капча — пройдите её.';
-  return `(() => {
+  return `(async () => {
     const d = ${JSON.stringify(d)};
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
     const vis = el => el && el.offsetParent !== null && !el.disabled && el.type !== 'hidden';
     const q = sels => { for (const s of sels) for (const el of document.querySelectorAll(s)) if (vis(el)) return el; return null; };
     const meta = el => [el.name, el.id, el.getAttribute('aria-label'), el.placeholder, el.getAttribute('autocomplete'),
@@ -165,7 +167,13 @@ function outlookFillScript(d, lang) {
     const domSel = q(['select#liveDomainBoxList', 'select[name="LiveDomainBoxList"]']);
     const email = q(['#MemberName', '#usernameInput', 'input[name="MemberName"]', 'input[name="Email"]', 'input[type="email"]'])
                || findIn(inputs, /e-?mail|почт|member|username|new email/i);
-    if (email) fill(email, domSel ? d.local : d.email);
+    // Если рядом с полем уже есть домен («@outlook.com» / выпадающий список) — вписываем только имя до @
+    const domainText = el => /^@?(outlook|hotmail|live)\.[a-z.]+$/i.test((el.textContent || el.value || '').trim());
+    const near = el => { let n = el; for (let i = 0; i < 4 && n; i++, n = n.parentElement) {
+      if ([...n.querySelectorAll('span,div,button,label,[role="combobox"],[role="button"],option')].some(x => vis(x) && domainText(x))) return true;
+      if (/@(outlook|hotmail|live)\./i.test(n.textContent || '')) return true; } return false; };
+    const pickerOnPage = [...document.querySelectorAll('button,[role="combobox"],[role="button"]')].some(x => vis(x) && domainText(x));
+    if (email) fill(email, (domSel || pickerOnPage || near(email)) ? d.local : d.email);
     if (domSel) { const o = [...domSel.options].find(o => /outlook\.com/i.test(o.value + o.text)); if (o) setVal(domSel, o.value); }
 
     const pw = inputs.find(i => i.type === 'password');
@@ -180,6 +188,31 @@ function outlookFillScript(d, lang) {
     if (bm) fill(bm, d.bm);
     if (bd) fill(bd, d.bd);
     if (by) fill(by, d.by);
+
+    // Новая страница Microsoft: день и месяц — выпадающие кнопки (role=combobox), а не <select>
+    const combos = [...document.querySelectorAll('[role="combobox"]')].filter(vis).filter(c => c.tagName !== 'INPUT' && c.tagName !== 'SELECT');
+    const cmeta = c => [c.id, c.getAttribute('name'), c.getAttribute('aria-label'),
+      ...(c.getAttribute('aria-labelledby') || '').split(' ').map(id => (document.getElementById(id) || {}).textContent || '')].join(' ');
+    const locs = [document.documentElement.lang, navigator.language, 'ru', 'uk', 'en'].filter(Boolean);
+    const monthNames = m => locs.flatMap(l => { try { return [new Intl.DateTimeFormat(l, { month: 'long' }).format(new Date(2000, m - 1, 15)).toLowerCase()]; } catch { return []; } });
+    const isMonth = (txt, m) => txt === String(m) || txt === String(m).padStart(2, '0') || monthNames(m).some(n => txt.startsWith(n.slice(0, 3)));
+    const isDay = (txt, dd) => txt === String(dd) || txt === String(dd).padStart(2, '0');
+    const dayBox = combos.find(c => /day|день|дня/i.test(cmeta(c)) && !/month|месяц|місяц/i.test(cmeta(c)));
+    const monthBox = combos.find(c => /month|месяц|місяц/i.test(cmeta(c)));
+    const pick = async (box, match, idx) => {
+      box.click(); await sleep(450);
+      const opts = [...document.querySelectorAll('[role="option"]')].filter(vis);
+      let o = opts.find(x => match(x.textContent.trim().toLowerCase()));
+      if (!o && opts.length) o = opts[Math.min(opts.length - 1, idx)];
+      if (o) { o.scrollIntoView({ block: 'center' }); o.click(); await sleep(300); }
+      else box.click();
+    };
+    for (const [box, match, idx] of [[dayBox, t => isDay(t, d.bd), d.bd - 1], [monthBox, t => isMonth(t, d.bm), d.bm - 1]]) {
+      if (!box) continue;
+      fields++;
+      if (!match(box.textContent.trim().toLowerCase())) await pick(box, match, idx);
+      if (match(box.textContent.trim().toLowerCase())) ok++;
+    }
 
     const country = q(['select#Country', 'select[name="Country"]', 'select#countryRegionDropdown']) || findIn(selects, /country|region|стран|краї/i);
     if (country && !country.dataset.nx) {
@@ -255,6 +288,49 @@ function openOutlookMail(partition) {
   });
   mw.loadURL(OUTLOOK_MAIL);
 }
+
+// Фоновая проверка почты Outlook: находим письмо Steam и сами открываем ссылку подтверждения
+const watchers = new Map();
+function watchOutlookForSteam(partition) {
+  if (watchers.has(partition)) return;
+  const hw = new BrowserWindow({
+    show: false, width: 1280, height: 900,
+    webPreferences: { session: outlookSession(partition), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false }
+  });
+  hw.webContents.setAudioMuted(true);
+  const folders = [OUTLOOK_MAIL, 'https://outlook.live.com/mail/0/junkemail'];
+  let fi = 0, ticks = 0, finished = false;
+  const stop = () => { finished = true; clearInterval(timer); watchers.delete(partition); if (!hw.isDestroyed()) hw.destroy(); };
+  const found = url => { if (finished) return; stop(); sendState({ stage: 'mailfound' }); steamVerify(url); };
+  hw.webContents.setWindowOpenHandler(({ url }) => { const real = unwrapLink(url); if (STEAM_VERIFY_RE.test(real)) found(real); return { action: 'deny' }; });
+  const script = `(() => {
+    const unwrap = h => { try { const u = new URL(h); if (/safelinks/i.test(u.hostname) && u.searchParams.get('url')) h = u.searchParams.get('url'); } catch {}
+      for (let i = 0; i < 3 && /^https?%3A/i.test(h); i++) { try { h = decodeURIComponent(h); } catch { break; } } return h; };
+    const RE = ${STEAM_VERIFY_RE};
+    for (const a of document.querySelectorAll('a[href]')) { const h = unwrap(a.href); if (RE.test(h)) return { link: h }; }
+    const items = [...document.querySelectorAll('[role="option"], [role="listitem"], [data-convid]')];
+    const item = items.find(el => /steam/i.test((el.getAttribute('aria-label') || '') + ' ' + el.textContent));
+    if (item) {
+      if (!window.__nxClicked || Date.now() - window.__nxClicked > 8000) { window.__nxClicked = Date.now(); item.click(); }
+      return { clicked: true };
+    }
+    if (!window.__nxOther) {
+      const b = [...document.querySelectorAll('button, [role="tab"]')].find(x => /^(other|другие|другое|інші)$/i.test(x.textContent.trim()));
+      if (b) { window.__nxOther = 1; b.click(); }
+    }
+    return {};
+  })()`;
+  const timer = setInterval(async () => {
+    if (finished || hw.isDestroyed()) return;
+    ticks++;
+    if (ticks > 225) { stop(); sendState({ stage: 'mailtimeout' }); return; } // ~15 минут
+    if (ticks % 15 === 0) { fi = (fi + 1) % folders.length; hw.loadURL(folders[fi]); return; } // входящие <-> нежелательная
+    try { const r = await hw.webContents.executeJavaScript(script); if (r && r.link) found(r.link); } catch {}
+  }, 4000);
+  watchers.set(partition, stop);
+  hw.loadURL(folders[0]);
+}
+ipcMain.handle('outlook:watchSteam', (_e, partition) => { if (okPartition(partition)) watchOutlookForSteam(partition); return true; });
 
 ipcMain.handle('outlook:signup', (_e, data) => {
   if (!okPartition(data?.partition)) return false;
