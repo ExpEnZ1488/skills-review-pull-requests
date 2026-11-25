@@ -132,6 +132,11 @@
   .sdet .acts { margin-top:10px; justify-content:flex-start; }
   .sitem .arrow { transition:transform .15s; }
   .sitem.open .arrow { transform:rotate(90deg); }
+  .row .suffix { font-family:var(--mono); color:var(--muted); font-size:15px; }
+  .two { display:flex; gap:8px; }
+  .two .inp { width:50%; }
+  .sel { flex:1; min-width:0; background:#050a17; color:var(--neon); border:0; outline:0; font-family:var(--mono); font-size:15px; }
+  .sel option { background:#0a1020; }
   .backbar { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; }
 
   /* Входящие */
@@ -206,6 +211,7 @@
 
   <nav class="tabs">
     <button data-tab="mail" data-i18n="tabMail"></button>
+    <button data-tab="outlook" data-i18n="tabOutlook"></button>
     <button data-tab="steam" data-i18n="tabSteam"></button>
   </nav>
 
@@ -280,18 +286,57 @@
     </div>
   </div>
 
+  <!-- ===== Вкладка «Outlook» ===== -->
+  <div id="tab-outlook" class="hidden">
+    <section class="panel">
+      <h2><span data-i18n="olTitle"></span><button class="btn" id="olAuto" data-i18n="olAutoAll"></button></h2>
+      <div class="field" style="margin-top:0">
+        <label for="olLocal" data-i18n="email"></label>
+        <div class="row"><input id="olLocal" class="inp" maxlength="64" autocomplete="off" spellcheck="false"><span class="suffix">@outlook.com</span>
+          <button class="btn" id="olLocalGen" data-i18n="auto"></button></div>
+      </div>
+      <div class="field">
+        <label for="olPass" data-i18n="password"></label>
+        <div class="row"><input id="olPass" class="inp" maxlength="64" autocomplete="off" spellcheck="false">
+          <button class="btn" id="olPassGen" data-i18n="auto"></button></div>
+      </div>
+      <div class="field">
+        <label data-i18n="olName"></label>
+        <div class="row"><div class="two" style="flex:1"><input id="olFirst" class="inp" maxlength="40" autocomplete="off"><input id="olLast" class="inp" maxlength="40" autocomplete="off"></div>
+          <button class="btn" id="olNameGen" data-i18n="auto"></button></div>
+      </div>
+      <div class="field">
+        <label data-i18n="olBirth"></label>
+        <div class="row"><code id="olBirthOut"></code><button class="btn" id="olBirthGen" data-i18n="auto"></button></div>
+      </div>
+      <div class="hint" data-i18n="olHint"></div>
+      <button class="create" id="olGo" style="margin-top:14px"><span data-i18n="olGo"></span><span class="cur"></span></button>
+      <div class="status" id="olStatus"></div>
+      <ol class="steps hidden" id="olSteps">
+        <li data-step="fill" data-i18n="olStepFill"></li>
+        <li data-step="captcha" data-i18n="olStepCaptcha"></li>
+        <li data-step="done" data-i18n="olStepDone"></li>
+      </ol>
+      <div class="acts hidden" id="olDoneActs" style="margin-top:10px"><button class="btn" id="olDone" data-i18n="olMarkDone"></button></div>
+    </section>
+    <section class="panel">
+      <h2><span data-i18n="olAccounts"></span></h2>
+      <ul class="boxes" id="olList"></ul>
+    </section>
+  </div>
+
   <!-- ===== Вкладка «Steam» ===== -->
   <div id="tab-steam" class="hidden">
     <section class="panel">
       <h2><span data-i18n="steamTitle"></span></h2>
       <div class="field" style="margin-top:0">
         <label data-i18n="mailSource"></label>
-        <div class="seg wide" id="srcSeg"><button data-src="temp" data-i18n="srcTemp"></button><button data-src="own" data-i18n="srcOwn"></button></div>
+        <div class="seg wide" id="srcSeg"><button data-src="temp" data-i18n="srcTemp"></button><button data-src="outlook" data-i18n="srcOutlook"></button></div>
       </div>
-      <div class="field hidden" id="ownField">
-        <label for="ownEmail" data-i18n="ownEmail"></label>
-        <div class="row"><input id="ownEmail" class="inp" type="email" maxlength="120" autocomplete="email" spellcheck="false"></div>
-        <div class="hint" data-i18n="srcHintOwn"></div>
+      <div class="field hidden" id="olField">
+        <label for="olSelect" data-i18n="olPick"></label>
+        <div class="row"><select id="olSelect" class="sel"></select></div>
+        <div class="hint"><span data-i18n="srcHintOutlook"></span> <button class="btn" id="toOutlook" data-i18n="olCreateBtn"></button></div>
       </div>
       <div class="field">
         <label for="sLogin" data-i18n="steamLogin"></label>
@@ -306,6 +351,7 @@
       <div class="hint" data-i18n="steamHint"></div>
       <button class="create" id="steamGo" style="margin-top:14px"><span data-i18n="steamGo"></span><span class="cur"></span></button>
       <div class="status" id="steamStatus"></div>
+      <div class="acts hidden" id="steamMailActs" style="margin-top:10px"><button class="btn solid" id="steamOpenMail" data-i18n="openOutlookMail"></button></div>
       <ol class="steps hidden" id="steamSteps">
         <li data-step="mail" data-i18n="stepMail"></li>
         <li data-step="captcha" data-i18n="stepCaptcha"></li>
@@ -360,9 +406,18 @@
       steamHint:'Логин и пароль можно вписать самому или оставить пустыми — они сгенерируются. Нажмите кнопку: создастся почта и откроется окно Steam — почта и страна (Украина) уже будут выбраны. Отметьте согласие и пройдите капчу; почта подтвердится автоматически, а логин и пароль подставятся, когда Steam откроет эти поля.',
       steamHintWeb:'В браузерной версии окно Steam откроется в новой вкладке, а почта будет скопирована — вставьте её. Полная автоподстановка работает в программе NexusMail.exe.',
       openBox:'Открыть ящик ›', emailPass:'Пароль почты', openGmail:'Открыть Gmail ↗',
-      mailSource:'Почта для Steam', srcTemp:'Новая временная', srcOwn:'Своя (Gmail и др.)', ownEmail:'Ваша почта', ownPh:'you@gmail.com',
-      srcHintOwn:'Steam разрешает несколько аккаунтов на одну почту. Письмо с подтверждением придёт к вам — нажмите в нём ссылку, и окно Steam само перейдёт к логину и паролю.',
-      badEmail:'Введите корректный адрес почты', stepVerifyOwn:'Откройте письмо от Steam в своей почте и нажмите ссылку',
+      mailSource:'Почта для Steam', srcTemp:'Новая временная', srcOutlook:'Outlook', olPick:'Аккаунт Outlook',
+      srcHintOutlook:'Выберите созданную почту Outlook.', olCreateBtn:'Создать Outlook ›', olNone:'— сначала создайте Outlook —', olPending:'не завершён',
+      noOutlook:'Сначала создайте почту на вкладке Outlook', stepVerifyOutlook:'Откройте почту Outlook и нажмите ссылку в письме Steam',
+      openOutlookMail:'Открыть почту Outlook', tabOutlook:'Outlook',
+      olTitle:'Регистрация Outlook', olAutoAll:'🎲 Всё авто', olName:'Имя и фамилия', olBirth:'Дата рождения',
+      olHint:'Нажмите кнопку — откроется окно регистрации Microsoft. Программа сама впишет адрес, пароль, имя и дату рождения и будет нажимать «Далее». Вам нужно только пройти капчу.',
+      olHintWeb:'В браузерной версии регистрация откроется в новой вкладке, а адрес будет скопирован. Автозаполнение работает в NexusMail.exe.',
+      olGo:'Создать Outlook', olOpened:'Окно Microsoft открыто — пройдите капчу', olWeb:'Адрес скопирован — заполните форму на странице Microsoft',
+      olStepFill:'Поля заполняются автоматически', olStepCaptcha:'Пройдите капчу (и при необходимости выберите дату рождения)', olStepDone:'Почта создана',
+      olMarkDone:'Я завершил регистрацию ✓', olCreated:'Почта Outlook создана ✓', olClosed:'Окно закрыто. Если регистрация завершена — нажмите «Я завершил регистрацию»',
+      olAccounts:'Аккаунты Outlook', olEmpty:'Пока нет почт Outlook', fullName:'Имя', useForSteam:'Для Steam ›',
+      badLocal:'Адрес: 3–64 символа, латиница, цифры, точка, - и _', badName:'Укажите имя и фамилию латиницей',
       steamGo:'Создать аккаунт Steam', steamAccounts:'Аккаунты Steam', noSteam:'Пока нет аккаунтов Steam',
       steamOpened:'Окно Steam открыто — пройдите капчу', steamWeb:'Почта скопирована — вставьте её на странице Steam',
       steamVerifying:'Письмо Steam получено — подтверждаем почту…', steamVerified:'Почта подтверждена ✓ Нажмите «Готово» в окне Steam',
@@ -395,9 +450,18 @@
       steamHint:'Type your own login and password or leave them empty to generate. Press the button: a mailbox is created and a Steam window opens with the email and country (Ukraine) already set. Tick the agreement and solve the captcha; the email is confirmed automatically and the login and password are filled in once Steam shows those fields.',
       steamHintWeb:'In the browser version Steam opens in a new tab and the email is copied — paste it there. Full auto-fill works in the NexusMail.exe app.',
       openBox:'Open mailbox ›', emailPass:'Email password', openGmail:'Open Gmail ↗',
-      mailSource:'Email for Steam', srcTemp:'New temporary', srcOwn:'My own (Gmail etc.)', ownEmail:'Your email', ownPh:'you@gmail.com',
-      srcHintOwn:'Steam allows several accounts per email. The verification email comes to you — click the link in it and the Steam window moves on to login and password by itself.',
-      badEmail:'Enter a valid email address', stepVerifyOwn:'Open the Steam email in your inbox and click the link',
+      mailSource:'Email for Steam', srcTemp:'New temporary', srcOutlook:'Outlook', olPick:'Outlook account',
+      srcHintOutlook:'Pick an Outlook mailbox you created.', olCreateBtn:'Create Outlook ›', olNone:'— create an Outlook first —', olPending:'not finished',
+      noOutlook:'Create a mailbox on the Outlook tab first', stepVerifyOutlook:'Open Outlook mail and click the link in the Steam email',
+      openOutlookMail:'Open Outlook mail', tabOutlook:'Outlook',
+      olTitle:'Outlook sign-up', olAutoAll:'🎲 All auto', olName:'First and last name', olBirth:'Date of birth',
+      olHint:'Press the button and a Microsoft sign-up window opens. The app fills in the address, password, name and date of birth and presses “Next” for you. You only need to solve the captcha.',
+      olHintWeb:'In the browser version sign-up opens in a new tab and the address is copied. Auto-fill works in NexusMail.exe.',
+      olGo:'Create Outlook', olOpened:'Microsoft window is open — solve the captcha', olWeb:'Address copied — fill in the form on the Microsoft page',
+      olStepFill:'Fields are filled in automatically', olStepCaptcha:'Solve the captcha (and pick the birth date if asked)', olStepDone:'Mailbox created',
+      olMarkDone:'I finished sign-up ✓', olCreated:'Outlook mailbox created ✓', olClosed:'Window closed. If sign-up is complete, press “I finished sign-up”',
+      olAccounts:'Outlook accounts', olEmpty:'No Outlook mailboxes yet', fullName:'Name', useForSteam:'For Steam ›',
+      badLocal:'Address: 3–64 chars, Latin letters, digits, dot, - and _', badName:'Enter first and last name in Latin letters',
       steamGo:'Create Steam account', steamAccounts:'Steam accounts', noSteam:'No Steam accounts yet',
       steamOpened:'Steam window is open — solve the captcha', steamWeb:'Email copied — paste it on the Steam page',
       steamVerifying:'Steam email received — confirming…', steamVerified:'Email confirmed ✓ Press “Done” in the Steam window',
@@ -407,7 +471,7 @@
       badLogin:'Steam login: 3–32 chars, Latin letters, digits and _ only', badPass:'Steam password: at least 8 characters'
     }
   };
-  const settings = Object.assign({ lang:'ru', autocopy:true, autoverify:true, sound:true, notify:false, tab:'mail', steamSrc:'temp', ownEmail:'' }, store.get('nexus.settings', {}));
+  const settings = Object.assign({ lang:'ru', autocopy:true, autoverify:true, sound:true, notify:false, tab:'mail', steamSrc:'temp' }, store.get('nexus.settings', {}));
   const t = (k, vars) => {
     let s = (I18N[settings.lang] || I18N.ru)[k] ?? I18N.ru[k] ?? k;
     if (vars) for (const [a, b] of Object.entries(vars)) s = s.replace('{' + a + '}', b);
@@ -431,8 +495,10 @@
     document.querySelectorAll('[data-i18n-title]').forEach(el => el.title = t(el.dataset.i18nTitle));
     document.querySelectorAll('#langSeg button').forEach(b => b.classList.toggle('on', b.dataset.lang === settings.lang));
     $('codeBig').title = t('copyCode');
-    $('sLogin').placeholder = t('loginPh'); $('sPass').placeholder = t('passPh'); $('ownEmail').placeholder = t('ownPh');
-    if (!desktop) document.querySelector('#tab-steam .hint').textContent = t('steamHint') + ' ' + t('steamHintWeb');
+    $('sLogin').placeholder = t('loginPh'); $('sPass').placeholder = t('passPh'); 
+    if (!desktop) document.querySelector('#tab-steam > .panel > .hint').textContent = t('steamHint') + ' ' + t('steamHintWeb');
+    if (!desktop) document.querySelector('#tab-outlook .hint').textContent = t('olHint') + ' ' + t('olHintWeb');
+    if (typeof renderOutlook === 'function') { renderOutlook(); renderBirth(); }
     for (const [id, s] of Object.entries(statuses)) if (s) setStatus(id, s.key, s.kind, s.extra);
     if (current) renderInbox(lastMsgs, new Set());
     renderLists();
@@ -549,6 +615,7 @@
     document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
     $('tab-mail').classList.toggle('hidden', tab !== 'mail');
     $('tab-steam').classList.toggle('hidden', tab !== 'steam');
+    $('tab-outlook').classList.toggle('hidden', tab !== 'outlook');
   }
   function showList() {
     $('mailBox').classList.add('hidden'); $('mailList').classList.remove('hidden');
@@ -611,7 +678,7 @@
     const open = openSteamItems.has(acc.address);
     wrap.classList.toggle('open', open); det.classList.toggle('hidden', !open);
     const rows = [['steamLogin', acc.steam.login], ['steamPass', acc.steam.pass], ['email', acc.address]];
-    if (!acc.own) rows.push(['emailPass', acc.password]);
+    if (acc.password) rows.push(['emailPass', acc.password]);
     for (const [k, v] of rows) {
       const row = document.createElement('div'); row.className = 'kv';
       const kk = document.createElement('span'); kk.className = 'k'; kk.textContent = t(k);
@@ -623,11 +690,10 @@
     const acts = document.createElement('div'); acts.className = 'acts';
     const ob = document.createElement('button'); ob.className = 'btn solid'; ob.textContent = t('openBox');
     ob.onclick = () => openBox(acc);
-    if (acc.own) {
-      ob.textContent = t('openGmail');
-      ob.onclick = () => openLink('https://mail.google.com/');
-      if (!/@(gmail|googlemail)\.com$/i.test(acc.address)) ob.classList.add('hidden');
-    }
+    if (acc.outlook) {
+      ob.textContent = t('openOutlookMail');
+      ob.onclick = () => openOutlookMail(acc.outlook);
+    } else if (acc.own) ob.classList.add('hidden');
     acts.append(ob); det.append(acts);
     wrap.append(head, det);
     return wrap;
@@ -859,19 +925,21 @@
     if (!pass) { pass = randomPassword(10); $('sPass').value = pass; }
     if (!/^[A-Za-z0-9_]{3,32}$/.test(login)) return setStatus('steamStatus', 'badLogin', 'err');
     if (pass.length < 8) return setStatus('steamStatus', 'badPass', 'err');
-    const own = settings.steamSrc === 'own';
-    const ownEmail = $('ownEmail').value.trim();
-    if (own && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownEmail)) return setStatus('steamStatus', 'badEmail', 'err');
+    const own = settings.steamSrc === 'outlook';
+    const ol = own ? outlooks.find(o => o.address === $('olSelect').value) : null;
+    if (own && !ol) return setStatus('steamStatus', 'noOutlook', 'err');
     const b = $('steamGo'); b.disabled = true; setStatus('steamStatus', own ? null : 'creating');
     try {
-      const acc = own ? { address: ownEmail, password: '', own: true, created: Date.now() } : await createAccount();
+      const acc = own ? { address: ol.address, password: ol.password, own: true, outlook: ol.partition, created: Date.now() } : await createAccount();
       acc.steam = { login, pass };
       addAccount(acc);
       steamFlow = acc;
       if (!own) selectAccount(acc); // начинаем следить за письмами этого ящика
       else renderLists();
-      document.querySelector('#steamSteps li[data-step=verify]').dataset.i18n = own ? 'stepVerifyOwn' : 'stepVerify';
-      document.querySelector('#steamSteps li[data-step=verify]').textContent = t(own ? 'stepVerifyOwn' : 'stepVerify');
+      document.querySelector('#steamSteps li[data-step=verify]').dataset.i18n = own ? 'stepVerifyOutlook' : 'stepVerify';
+      document.querySelector('#steamSteps li[data-step=verify]').textContent = t(own ? 'stepVerifyOutlook' : 'stepVerify');
+      $('steamMailActs').classList.toggle('hidden', !own);
+      $('steamOpenMail').onclick = () => openOutlookMail(ol.partition);
       setSteps('captcha');
       if (desktop) {
         await desktop.openSteam({ email: acc.address, login, pass, lang: settings.lang });
@@ -894,13 +962,153 @@
 
   // источник почты для Steam: новая временная или своя
   function applySrc() {
+    if (settings.steamSrc !== 'outlook') settings.steamSrc = 'temp';
     document.querySelectorAll('#srcSeg button').forEach(b => b.classList.toggle('on', b.dataset.src === settings.steamSrc));
-    $('ownField').classList.toggle('hidden', settings.steamSrc !== 'own');
+    $('olField').classList.toggle('hidden', settings.steamSrc !== 'outlook');
   }
   document.querySelectorAll('#srcSeg button').forEach(b => b.onclick = () => { settings.steamSrc = b.dataset.src; saveSettings(); applySrc(); });
-  $('ownEmail').value = settings.ownEmail;
-  $('ownEmail').oninput = e => { settings.ownEmail = e.target.value.trim(); saveSettings(); };
+  $('toOutlook').onclick = () => setTab('outlook');
+
+  // ---------- Outlook ----------
+  let outlooks = store.get('nexus.outlook', []);
+  const saveOutlooks = () => store.set('nexus.outlook', outlooks);
+  const FIRST = ['Alex','Daniel','Maksym','Ivan','Artem','Nikita','Denys','Oleh','Taras','Andrii','Mark','Dmytro','Bohdan',
+                 'Maria','Anna','Sofia','Eva','Kateryna','Olena','Yulia','Daria','Viktoria'];
+  const LAST = ['Kovalenko','Shevchenko','Bondarenko','Tkachenko','Kravchenko','Melnyk','Boyko','Moroz','Lysenko',
+                'Petrenko','Savchenko','Rudenko','Marchenko','Hrytsenko','Polishchuk','Koval','Oliynyk'];
+  let olBirth = null;
+  const genBirth = () => ({ d: 1 + rnd(28), m: 1 + rnd(12), y: 1990 + rnd(15) });
+  const fmtBirth = b => String(b.d).padStart(2, '0') + '.' + String(b.m).padStart(2, '0') + '.' + b.y;
+  function renderBirth() { if (olBirth) $('olBirthOut').textContent = fmtBirth(olBirth); }
+  function genLocal() {
+    const f = ($('olFirst').value || pick(FIRST)).toLowerCase().replace(/[^a-z]/g, '');
+    const l = ($('olLast').value || pick(LAST)).toLowerCase().replace(/[^a-z]/g, '');
+    let s = f + pick(['.', '_', '']) + l; for (let i = 0; i < 4; i++) s += pick('0123456789');
+    return s;
+  }
+  function genName() { $('olFirst').value = pick(FIRST); $('olLast').value = pick(LAST); }
+  function olAutoAll() { genName(); $('olLocal').value = genLocal(); $('olPass').value = randomPassword(10); olBirth = genBirth(); renderBirth(); }
+  $('olAuto').onclick = olAutoAll;
+  $('olNameGen').onclick = genName;
+  $('olLocalGen').onclick = () => { $('olLocal').value = genLocal(); };
+  $('olPassGen').onclick = () => { $('olPass').value = randomPassword(10); };
+  $('olBirthGen').onclick = () => { olBirth = genBirth(); renderBirth(); };
+
+  function setOlSteps(active) {
+    const order = ['fill', 'captcha', 'done', 'end'];
+    $('olSteps').classList.remove('hidden');
+    const idx = order.indexOf(active);
+    document.querySelectorAll('#olSteps li').forEach(li => {
+      const i = order.indexOf(li.dataset.step);
+      li.classList.toggle('done', i < idx); li.classList.toggle('active', i === idx);
+    });
+  }
+  let olPending = null;
+  function markOutlookDone(ol) {
+    if (!ol || ol.done) return;
+    ol.done = true; saveOutlooks(); renderOutlook();
+    setOlSteps('end'); setStatus('olStatus', 'olCreated', 'ok');
+    $('olDoneActs').classList.add('hidden');
+    beep(); toast(esc(t('olCreated')));
+  }
+  function openOutlookMail(partition) {
+    if (desktop && desktop.openOutlook) desktop.openOutlook(partition);
+    else openLink('https://outlook.live.com/mail/0/');
+  }
+
+  $('olGo').onclick = async () => {
+    if (!$('olFirst').value.trim() || !$('olLast').value.trim()) genName();
+    if (!$('olLocal').value.trim()) $('olLocal').value = genLocal();
+    if (!$('olPass').value) $('olPass').value = randomPassword(10);
+    if (!olBirth) { olBirth = genBirth(); renderBirth(); }
+    const local = $('olLocal').value.trim().toLowerCase().replace(/@.*$/, '');
+    const pass = $('olPass').value, first = $('olFirst').value.trim(), last = $('olLast').value.trim();
+    if (!/^[a-z0-9][a-z0-9._-]{2,63}$/.test(local)) return setStatus('olStatus', 'badLocal', 'err');
+    if (pass.length < 8) return setStatus('olStatus', 'badPass', 'err');
+    if (!/^[A-Za-z' -]+$/.test(first + last)) return setStatus('olStatus', 'badName', 'err');
+    const ol = { address: local + '@outlook.com', local, password: pass, first, last, birth: olBirth,
+                 partition: 'ol-' + Date.now(), created: Date.now(), done: false };
+    outlooks.unshift(ol); saveOutlooks(); renderOutlook();
+    olPending = ol;
+    setOlSteps('fill');
+    $('olDoneActs').classList.remove('hidden');
+    if (desktop && desktop.openOutlookSignup) {
+      await desktop.openOutlookSignup({ email: ol.address, local, pass, first, last,
+        bd: olBirth.d, bm: olBirth.m, by: olBirth.y, partition: ol.partition, lang: settings.lang });
+      setStatus('olStatus', 'olOpened');
+    } else {
+      await copyText(ol.address);
+      openLink('https://signup.live.com/signup?lic=1');
+      setStatus('olStatus', 'olWeb');
+    }
+    // следующий аккаунт — сразу с новыми данными
+    olAutoAll();
+  };
+  $('olDone').onclick = () => markOutlookDone(olPending);
+  if (desktop && desktop.onOutlookState) desktop.onOutlookState(s => {
+    const ol = outlooks.find(o => o.partition === s.partition);
+    if (!ol) return;
+    if (s.stage === 'captcha' && !ol.done) setOlSteps('captcha');
+    if (s.stage === 'done') markOutlookDone(ol);
+    if (s.stage === 'closed' && !ol.done && ol === olPending) setStatus('olStatus', 'olClosed');
+  });
+
+  const openOlItems = new Set();
+  function renderOutlook() {
+    const ul = $('olList'); ul.innerHTML = '';
+    if (!outlooks.length) ul.innerHTML = '<div class="empty">' + esc(t('olEmpty')) + '</div>';
+    outlooks.forEach(ol => {
+      const wrap = document.createElement('div'); wrap.className = 'sitem';
+      const li = document.createElement('li');
+      const ico = document.createElement('div'); ico.className = 'ico'; ico.textContent = ol.done ? '✉' : '…';
+      const info = document.createElement('div'); info.className = 'info';
+      const a = document.createElement('div'); a.className = 'addr'; a.textContent = ol.address;
+      const meta = document.createElement('div'); meta.className = 'meta';
+      meta.textContent = [ol.first + ' ' + ol.last, new Date(ol.created).toLocaleString(settings.lang), ol.done ? null : t('olPending')].filter(Boolean).join(' · ');
+      info.append(a, meta);
+      const cp = document.createElement('button'); cp.className = 'btn icon'; cp.textContent = '⧉'; cp.title = t('copy');
+      cp.onclick = e => { e.stopPropagation(); copyText(ol.address, cp); };
+      const arrow = document.createElement('span'); arrow.className = 'arrow'; arrow.textContent = '›';
+      li.append(ico, info, cp, arrow);
+      const det = document.createElement('div'); det.className = 'sdet';
+      const open = openOlItems.has(ol.partition);
+      wrap.classList.toggle('open', open); det.classList.toggle('hidden', !open);
+      li.onclick = () => {
+        if (openOlItems.has(ol.partition)) openOlItems.delete(ol.partition); else openOlItems.add(ol.partition);
+        wrap.classList.toggle('open'); det.classList.toggle('hidden');
+      };
+      for (const [k, v] of [['email', ol.address], ['password', ol.password], ['fullName', ol.first + ' ' + ol.last], ['olBirth', ol.birth ? fmtBirth(ol.birth) : '—']]) {
+        const row = document.createElement('div'); row.className = 'kv';
+        const kk = document.createElement('span'); kk.className = 'k'; kk.textContent = t(k);
+        const vv = document.createElement('span'); vv.className = 'v'; vv.textContent = v;
+        const c = document.createElement('button'); c.className = 'btn icon'; c.textContent = '⧉'; c.title = t('copy');
+        c.onclick = () => copyText(v, c);
+        row.append(kk, vv, c); det.append(row);
+      }
+      const acts = document.createElement('div'); acts.className = 'acts';
+      const om = document.createElement('button'); om.className = 'btn solid'; om.textContent = t('openOutlookMail');
+      om.onclick = () => openOutlookMail(ol.partition);
+      const us = document.createElement('button'); us.className = 'btn'; us.textContent = t('useForSteam');
+      us.onclick = () => { settings.steamSrc = 'outlook'; saveSettings(); applySrc(); renderOutlook(); $('olSelect').value = ol.address; setTab('steam'); };
+      const dn = document.createElement('button'); dn.className = 'btn' + (ol.done ? ' hidden' : ''); dn.textContent = t('olMarkDone');
+      dn.onclick = () => markOutlookDone(ol);
+      const del = document.createElement('button'); del.className = 'btn danger'; del.textContent = t('delete');
+      del.onclick = () => { if (!confirm(t('delConfirm'))) return; outlooks = outlooks.filter(o => o !== ol); saveOutlooks(); renderOutlook(); };
+      acts.append(om, us, dn, del); det.append(acts);
+      wrap.append(li, det); ul.append(wrap);
+    });
+    // список для вкладки Steam
+    const sel = $('olSelect'), prev = sel.value; sel.innerHTML = '';
+    if (!outlooks.length) { const o = document.createElement('option'); o.value = ''; o.textContent = t('olNone'); sel.append(o); }
+    outlooks.forEach(ol => {
+      const o = document.createElement('option'); o.value = ol.address;
+      o.textContent = ol.address + (ol.done ? '' : ' (' + t('olPending') + ')'); sel.append(o);
+    });
+    if (prev && outlooks.some(o => o.address === prev)) sel.value = prev;
+  }
   applySrc();
+  renderOutlook();
+  olAutoAll();
 
   // ---------- настройки ----------
   $('gear').onclick = () => { const p = $('settings'); p.classList.toggle('hidden'); $('gear').classList.toggle('on', !p.classList.contains('hidden')); };
@@ -921,7 +1129,7 @@
   };
 
   applyLang();
-  setTab(settings.tab === 'steam' ? 'steam' : 'mail');
+  setTab(['steam', 'outlook'].includes(settings.tab) ? settings.tab : 'mail');
   showList();
 })();
 </script>
