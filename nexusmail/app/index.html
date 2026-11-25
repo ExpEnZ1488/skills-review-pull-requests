@@ -98,6 +98,8 @@
   .set-row:first-of-type { border-top:0; }
   .seg { display:flex; border:1px solid var(--line2); border-radius:8px; overflow:hidden; }
   .seg button { background:transparent; border:0; color:var(--muted); padding:7px 14px; cursor:pointer; font-family:var(--mono); font-size:13px; }
+  .seg.wide { width:100%; }
+  .seg.wide button { flex:1; padding:10px; }
   .seg button.on { background:var(--neon); color:#001018; font-weight:700; }
   .sw { position:relative; width:42px; height:24px; flex:none; }
   .sw input { opacity:0; width:0; height:0; }
@@ -283,6 +285,15 @@
     <section class="panel">
       <h2><span data-i18n="steamTitle"></span></h2>
       <div class="field" style="margin-top:0">
+        <label data-i18n="mailSource"></label>
+        <div class="seg wide" id="srcSeg"><button data-src="temp" data-i18n="srcTemp"></button><button data-src="own" data-i18n="srcOwn"></button></div>
+      </div>
+      <div class="field hidden" id="ownField">
+        <label for="ownEmail" data-i18n="ownEmail"></label>
+        <div class="row"><input id="ownEmail" class="inp" type="email" maxlength="120" autocomplete="email" spellcheck="false"></div>
+        <div class="hint" data-i18n="srcHintOwn"></div>
+      </div>
+      <div class="field">
         <label for="sLogin" data-i18n="steamLogin"></label>
         <div class="row"><input id="sLogin" class="inp" maxlength="32" autocomplete="off" spellcheck="false">
           <button class="btn" id="sLoginGen" data-i18n="auto"></button></div>
@@ -348,7 +359,10 @@
       loginPh:'свой логин или «Авто»', passPh:'свой пароль или «Авто»',
       steamHint:'Логин и пароль можно вписать самому или оставить пустыми — они сгенерируются. Нажмите кнопку: создастся почта и откроется окно Steam — почта и страна (Украина) уже будут выбраны. Отметьте согласие и пройдите капчу; почта подтвердится автоматически, а логин и пароль подставятся, когда Steam откроет эти поля.',
       steamHintWeb:'В браузерной версии окно Steam откроется в новой вкладке, а почта будет скопирована — вставьте её. Полная автоподстановка работает в программе NexusMail.exe.',
-      openBox:'Открыть ящик ›', emailPass:'Пароль почты',
+      openBox:'Открыть ящик ›', emailPass:'Пароль почты', openGmail:'Открыть Gmail ↗',
+      mailSource:'Почта для Steam', srcTemp:'Новая временная', srcOwn:'Своя (Gmail и др.)', ownEmail:'Ваша почта', ownPh:'you@gmail.com',
+      srcHintOwn:'Steam разрешает несколько аккаунтов на одну почту. Письмо с подтверждением придёт к вам — нажмите в нём ссылку, и окно Steam само перейдёт к логину и паролю.',
+      badEmail:'Введите корректный адрес почты', stepVerifyOwn:'Откройте письмо от Steam в своей почте и нажмите ссылку',
       steamGo:'Создать аккаунт Steam', steamAccounts:'Аккаунты Steam', noSteam:'Пока нет аккаунтов Steam',
       steamOpened:'Окно Steam открыто — пройдите капчу', steamWeb:'Почта скопирована — вставьте её на странице Steam',
       steamVerifying:'Письмо Steam получено — подтверждаем почту…', steamVerified:'Почта подтверждена ✓ Нажмите «Готово» в окне Steam',
@@ -380,7 +394,10 @@
       loginPh:'your login or “Auto”', passPh:'your password or “Auto”',
       steamHint:'Type your own login and password or leave them empty to generate. Press the button: a mailbox is created and a Steam window opens with the email and country (Ukraine) already set. Tick the agreement and solve the captcha; the email is confirmed automatically and the login and password are filled in once Steam shows those fields.',
       steamHintWeb:'In the browser version Steam opens in a new tab and the email is copied — paste it there. Full auto-fill works in the NexusMail.exe app.',
-      openBox:'Open mailbox ›', emailPass:'Email password',
+      openBox:'Open mailbox ›', emailPass:'Email password', openGmail:'Open Gmail ↗',
+      mailSource:'Email for Steam', srcTemp:'New temporary', srcOwn:'My own (Gmail etc.)', ownEmail:'Your email', ownPh:'you@gmail.com',
+      srcHintOwn:'Steam allows several accounts per email. The verification email comes to you — click the link in it and the Steam window moves on to login and password by itself.',
+      badEmail:'Enter a valid email address', stepVerifyOwn:'Open the Steam email in your inbox and click the link',
       steamGo:'Create Steam account', steamAccounts:'Steam accounts', noSteam:'No Steam accounts yet',
       steamOpened:'Steam window is open — solve the captcha', steamWeb:'Email copied — paste it on the Steam page',
       steamVerifying:'Steam email received — confirming…', steamVerified:'Email confirmed ✓ Press “Done” in the Steam window',
@@ -390,7 +407,7 @@
       badLogin:'Steam login: 3–32 chars, Latin letters, digits and _ only', badPass:'Steam password: at least 8 characters'
     }
   };
-  const settings = Object.assign({ lang:'ru', autocopy:true, autoverify:true, sound:true, notify:false, tab:'mail' }, store.get('nexus.settings', {}));
+  const settings = Object.assign({ lang:'ru', autocopy:true, autoverify:true, sound:true, notify:false, tab:'mail', steamSrc:'temp', ownEmail:'' }, store.get('nexus.settings', {}));
   const t = (k, vars) => {
     let s = (I18N[settings.lang] || I18N.ru)[k] ?? I18N.ru[k] ?? k;
     if (vars) for (const [a, b] of Object.entries(vars)) s = s.replace('{' + a + '}', b);
@@ -414,7 +431,7 @@
     document.querySelectorAll('[data-i18n-title]').forEach(el => el.title = t(el.dataset.i18nTitle));
     document.querySelectorAll('#langSeg button').forEach(b => b.classList.toggle('on', b.dataset.lang === settings.lang));
     $('codeBig').title = t('copyCode');
-    $('sLogin').placeholder = t('loginPh'); $('sPass').placeholder = t('passPh');
+    $('sLogin').placeholder = t('loginPh'); $('sPass').placeholder = t('passPh'); $('ownEmail').placeholder = t('ownPh');
     if (!desktop) document.querySelector('#tab-steam .hint').textContent = t('steamHint') + ' ' + t('steamHintWeb');
     for (const [id, s] of Object.entries(statuses)) if (s) setStatus(id, s.key, s.kind, s.extra);
     if (current) renderInbox(lastMsgs, new Set());
@@ -593,7 +610,9 @@
     const det = document.createElement('div'); det.className = 'sdet';
     const open = openSteamItems.has(acc.address);
     wrap.classList.toggle('open', open); det.classList.toggle('hidden', !open);
-    for (const [k, v] of [['steamLogin', acc.steam.login], ['steamPass', acc.steam.pass], ['email', acc.address], ['emailPass', acc.password]]) {
+    const rows = [['steamLogin', acc.steam.login], ['steamPass', acc.steam.pass], ['email', acc.address]];
+    if (!acc.own) rows.push(['emailPass', acc.password]);
+    for (const [k, v] of rows) {
       const row = document.createElement('div'); row.className = 'kv';
       const kk = document.createElement('span'); kk.className = 'k'; kk.textContent = t(k);
       const vv = document.createElement('span'); vv.className = 'v'; vv.textContent = v;
@@ -604,6 +623,11 @@
     const acts = document.createElement('div'); acts.className = 'acts';
     const ob = document.createElement('button'); ob.className = 'btn solid'; ob.textContent = t('openBox');
     ob.onclick = () => openBox(acc);
+    if (acc.own) {
+      ob.textContent = t('openGmail');
+      ob.onclick = () => openLink('https://mail.google.com/');
+      if (!/@(gmail|googlemail)\.com$/i.test(acc.address)) ob.classList.add('hidden');
+    }
     acts.append(ob); det.append(acts);
     wrap.append(head, det);
     return wrap;
@@ -613,7 +637,9 @@
     const ul = $('boxList'); ul.innerHTML = '';
     $('clearAcc').classList.toggle('hidden', !accounts.length);
     if (!accounts.length) ul.innerHTML = '<div class="empty">' + esc(t('noBoxes')) + '</div>';
-    accounts.forEach(acc => ul.append(boxItem(acc, false)));
+    const boxes = accounts.filter(a => !a.own);
+    if (!boxes.length && accounts.length) ul.innerHTML = '<div class="empty">' + esc(t('noBoxes')) + '</div>';
+    boxes.forEach(acc => ul.append(boxItem(acc, false)));
     const sl = $('steamList'); sl.innerHTML = '';
     const steamAcc = accounts.filter(a => a.steam);
     if (!steamAcc.length) sl.innerHTML = '<div class="empty">' + esc(t('noSteam')) + '</div>';
@@ -833,13 +859,19 @@
     if (!pass) { pass = randomPassword(10); $('sPass').value = pass; }
     if (!/^[A-Za-z0-9_]{3,32}$/.test(login)) return setStatus('steamStatus', 'badLogin', 'err');
     if (pass.length < 8) return setStatus('steamStatus', 'badPass', 'err');
-    const b = $('steamGo'); b.disabled = true; setStatus('steamStatus', 'creating');
+    const own = settings.steamSrc === 'own';
+    const ownEmail = $('ownEmail').value.trim();
+    if (own && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownEmail)) return setStatus('steamStatus', 'badEmail', 'err');
+    const b = $('steamGo'); b.disabled = true; setStatus('steamStatus', own ? null : 'creating');
     try {
-      const acc = await createAccount();
+      const acc = own ? { address: ownEmail, password: '', own: true, created: Date.now() } : await createAccount();
       acc.steam = { login, pass };
       addAccount(acc);
       steamFlow = acc;
-      selectAccount(acc);           // начинаем следить за письмами этого ящика
+      if (!own) selectAccount(acc); // начинаем следить за письмами этого ящика
+      else renderLists();
+      document.querySelector('#steamSteps li[data-step=verify]').dataset.i18n = own ? 'stepVerifyOwn' : 'stepVerify';
+      document.querySelector('#steamSteps li[data-step=verify]').textContent = t(own ? 'stepVerifyOwn' : 'stepVerify');
       setSteps('captcha');
       if (desktop) {
         await desktop.openSteam({ email: acc.address, login, pass, lang: settings.lang });
@@ -859,6 +891,16 @@
     if (s.stage === 'account' || s.stage === 'verified') { setSteps('finish'); setStatus('steamStatus', 'steamVerified', 'ok'); }
     else if (s.stage === 'closed') { setStatus('steamStatus', 'steamClosed'); steamFlow = null; }
   });
+
+  // источник почты для Steam: новая временная или своя
+  function applySrc() {
+    document.querySelectorAll('#srcSeg button').forEach(b => b.classList.toggle('on', b.dataset.src === settings.steamSrc));
+    $('ownField').classList.toggle('hidden', settings.steamSrc !== 'own');
+  }
+  document.querySelectorAll('#srcSeg button').forEach(b => b.onclick = () => { settings.steamSrc = b.dataset.src; saveSettings(); applySrc(); });
+  $('ownEmail').value = settings.ownEmail;
+  $('ownEmail').oninput = e => { settings.ownEmail = e.target.value.trim(); saveSettings(); };
+  applySrc();
 
   // ---------- настройки ----------
   $('gear').onclick = () => { const p = $('settings'); p.classList.toggle('hidden'); $('gear').classList.toggle('on', !p.classList.contains('hidden')); };
