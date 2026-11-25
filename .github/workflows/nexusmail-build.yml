@@ -1,0 +1,27 @@
+name: Build NexusMail.exe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "nexusmail/**"
+      - ".github/workflows/nexusmail-build.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: nexusmail
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      # На Windows иконка встраивается прямо в .exe
+      - run: npx electron-builder --win portable --x64 -c.win.signAndEditExecutable=true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NexusMail
+          path: nexusmail/dist/NexusMail.exe

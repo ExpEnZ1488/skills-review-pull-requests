@@ -1,0 +1,47 @@
+{
+  "name": "nexusmail",
+  "productName": "NexusMail",
+  "version": "1.0.0",
+  "description": "NexusMail — real disposable email in one click",
+  "main": "main.js",
+  "author": "NexusMail",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable --x64",
+    "dist:setup": "electron-builder --win nsis --x64"
+  },
+  "build": {
+    "appId": "com.nexusmail.app",
+    "productName": "NexusMail",
+    "files": [
+      "main.js",
+      "preload.js",
+      "app/**/*",
+      "build/icon.png"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        "portable"
+      ],
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "NexusMail.exe"
+    },
+    "nsis": {
+      "artifactName": "NexusMail-Setup.exe",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  }
+}

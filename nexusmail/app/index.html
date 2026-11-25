@@ -1,0 +1,887 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src https://api.mail.tm; img-src * data: blob:; frame-src 'self' about: data: blob:; media-src *;">
+<title>NexusMail</title>
+<style>
+  :root {
+    --bg:#04060d; --panel:#0a1020; --line:#16315e; --line2:#1f4c8f;
+    --neon:#00e5ff; --neon-dim:rgba(0,229,255,.12); --blue:#2f7bff;
+    --text:#d8f6ff; --muted:#6f8fb8; --danger:#ff4d8d; --ok:#3dffb0;
+    --mono:ui-monospace,"Cascadia Mono",Menlo,Consolas,monospace;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--bg); color:var(--text); }
+  body { font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; min-height:100vh;
+         background:
+           radial-gradient(900px 500px at 15% -10%, rgba(47,123,255,.18), transparent 60%),
+           radial-gradient(700px 450px at 100% 110%, rgba(0,229,255,.12), transparent 60%),
+           var(--bg);
+         padding:24px 16px 48px; }
+  body::before { content:""; position:fixed; inset:0; pointer-events:none;
+         background-image:linear-gradient(rgba(0,229,255,.045) 1px, transparent 1px),
+                          linear-gradient(90deg, rgba(0,229,255,.045) 1px, transparent 1px);
+         background-size:40px 40px; mask-image:radial-gradient(circle at 50% 30%, #000 30%, transparent 80%); }
+  .wrap { position:relative; max-width:640px; margin:0 auto; }
+
+  header { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
+  .logo { margin:0; font-family:var(--mono); font-size:30px; font-weight:800; letter-spacing:3px; color:var(--neon);
+          text-shadow:0 0 6px rgba(0,229,255,.8), 0 0 22px rgba(0,229,255,.35); }
+  .logo span { color:var(--blue); text-shadow:0 0 6px rgba(47,123,255,.8), 0 0 22px rgba(47,123,255,.35); }
+  .tag { color:var(--muted); font-size:12px; letter-spacing:1px; margin-top:2px; }
+  .gear { width:42px; height:42px; border-radius:10px; border:1px solid var(--line2); background:var(--panel);
+          color:var(--neon); font-size:20px; cursor:pointer; transition:.15s; }
+  .gear:hover, .gear.on { border-color:var(--neon); box-shadow:0 0 12px rgba(0,229,255,.35); }
+
+  /* Вкладки */
+  .tabs { display:flex; gap:0; margin-bottom:16px; border:1px solid var(--line2); border-radius:12px; overflow:hidden; background:var(--panel); }
+  .tabs button { flex:1; padding:12px; background:transparent; border:0; color:var(--muted); cursor:pointer;
+                 font-family:var(--mono); font-size:14px; letter-spacing:2px; text-transform:uppercase; transition:.15s; }
+  .tabs button + button { border-left:1px solid var(--line2); }
+  .tabs button:hover { color:var(--text); }
+  .tabs button.on { color:var(--neon); background:var(--neon-dim); box-shadow:inset 0 -2px 0 var(--neon); }
+
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:20px; margin-bottom:16px; }
+
+  /* Главная кнопка: тёмная, с неоновой рамкой и срезанными углами */
+  .create { position:relative; display:flex; align-items:center; justify-content:center; gap:12px; width:100%;
+            padding:18px; border:0; cursor:pointer; background:var(--neon); color:var(--neon);
+            font-family:var(--mono); font-size:17px; font-weight:700; letter-spacing:4px; text-transform:uppercase;
+            clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px);
+            transition:color .15s, filter .15s; }
+  .create::before { content:""; position:absolute; inset:2px; background:#050c1c;
+            clip-path:polygon(13px 0,100% 0,100% calc(100% - 13px),calc(100% - 13px) 100%,0 100%,0 13px);
+            transition:background .15s; }
+  .create > * { position:relative; }
+  .create .cur { display:inline-block; width:10px; height:20px; background:currentColor; animation:blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity:0; } }
+  .create:hover { color:#001018; filter:drop-shadow(0 0 10px rgba(0,229,255,.55)); }
+  .create:hover::before { background:var(--neon); }
+  .create:active { transform:translateY(1px); }
+  .create:disabled { cursor:wait; filter:saturate(.4) brightness(.7); }
+  .create:disabled .cur { animation-duration:.25s; }
+
+  .status { min-height:20px; margin-top:12px; font-size:13px; text-align:center; color:var(--muted); font-family:var(--mono); }
+  .status.err { color:var(--danger); }
+  .status.ok { color:var(--ok); }
+  .field { margin-top:14px; }
+  .field > label { display:block; font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:var(--muted); margin-bottom:6px; }
+  .row { display:flex; gap:8px; align-items:center; background:#050a17; border:1px solid var(--line);
+         border-radius:10px; padding:10px 12px; }
+  .row code { flex:1; font-family:var(--mono); font-size:16px; color:var(--neon);
+              text-shadow:0 0 8px rgba(0,229,255,.45); word-break:break-all; }
+  .row:focus-within { border-color:var(--neon); }
+  .inp { flex:1; min-width:0; background:transparent; border:0; outline:0; color:var(--neon); font-family:var(--mono); font-size:16px; }
+  .inp::placeholder { color:#3d5a85; }
+  .hint { font-size:12px; color:var(--muted); margin-top:10px; line-height:1.5; }
+
+  .btn { background:transparent; border:1px solid var(--line2); color:var(--neon); border-radius:8px;
+         padding:7px 12px; font-size:12px; cursor:pointer; white-space:nowrap; transition:.15s; font-family:inherit; }
+  .btn:hover { border-color:var(--neon); background:var(--neon-dim); }
+  .btn.done { color:var(--ok); border-color:var(--ok); }
+  .btn.danger { color:var(--danger); border-color:rgba(255,77,141,.45); }
+  .btn.solid { background:var(--neon); color:#001018; border-color:var(--neon); font-weight:700; }
+  .btn.solid:hover { background:#5ff0ff; }
+  .btn.icon { padding:6px 9px; }
+  .hidden { display:none !important; }
+
+  h2 { margin:0 0 12px; font-size:12px; text-transform:uppercase; letter-spacing:2px; color:var(--neon);
+       display:flex; align-items:center; justify-content:space-between; gap:8px; font-family:var(--mono); }
+  .live { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--ok);
+          box-shadow:0 0 8px var(--ok); margin-right:8px; animation:pulse 1.6s infinite; }
+  @keyframes pulse { 50% { opacity:.3; } }
+
+  /* Настройки */
+  .set-row { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--line); font-size:14px; }
+  .set-row:first-of-type { border-top:0; }
+  .seg { display:flex; border:1px solid var(--line2); border-radius:8px; overflow:hidden; }
+  .seg button { background:transparent; border:0; color:var(--muted); padding:7px 14px; cursor:pointer; font-family:var(--mono); font-size:13px; }
+  .seg button.on { background:var(--neon); color:#001018; font-weight:700; }
+  .sw { position:relative; width:42px; height:24px; flex:none; }
+  .sw input { opacity:0; width:0; height:0; }
+  .sw span { position:absolute; inset:0; border-radius:12px; background:#0b1730; border:1px solid var(--line2); cursor:pointer; transition:.15s; }
+  .sw span::after { content:""; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:var(--muted); transition:.15s; }
+  .sw input:checked + span { border-color:var(--neon); }
+  .sw input:checked + span::after { left:21px; background:var(--neon); box-shadow:0 0 8px var(--neon); }
+
+  /* Список ящиков */
+  .boxes { list-style:none; margin:0; padding:0; }
+  .boxes li { display:flex; align-items:center; gap:12px; padding:14px; border:1px solid var(--line); border-radius:12px;
+              margin-bottom:8px; cursor:pointer; background:#060c1b; transition:.15s; }
+  .boxes li:hover { border-color:var(--neon); box-shadow:0 0 14px rgba(0,229,255,.18); }
+  .boxes li.cur { border-color:var(--neon2, var(--blue)); }
+  .boxes .ico { flex:none; width:38px; height:38px; border-radius:9px; display:grid; place-items:center;
+                border:1px solid var(--line2); color:var(--neon); font-size:18px; }
+  .boxes .ico.steam { color:#9ad4ff; }
+  .boxes .info { flex:1; min-width:0; }
+  .boxes .addr { font-family:var(--mono); font-size:14px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .boxes .meta { font-size:12px; color:var(--muted); margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .boxes .arrow { color:var(--muted); font-size:18px; }
+  .sitem { border:1px solid var(--line); border-radius:12px; margin-bottom:8px; background:#060c1b; transition:.15s; }
+  .sitem:hover, .sitem.open { border-color:var(--neon); }
+  .sitem > li { border:0 !important; margin:0 !important; background:transparent !important; box-shadow:none !important; }
+  .sdet { padding:0 14px 14px; }
+  .sdet .kv { display:flex; align-items:center; gap:8px; padding:8px 10px; margin-top:6px; background:#050a17;
+              border:1px solid var(--line); border-radius:8px; }
+  .sdet .k { flex:none; width:118px; font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); }
+  .sdet .v { flex:1; min-width:0; font-family:var(--mono); font-size:14px; color:var(--neon); word-break:break-all; }
+  .sdet .acts { margin-top:10px; justify-content:flex-start; }
+  .sitem .arrow { transition:transform .15s; }
+  .sitem.open .arrow { transform:rotate(90deg); }
+  .backbar { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; }
+
+  /* Входящие */
+  .msgs { list-style:none; margin:0; padding:0; }
+  .msgs li { padding:12px; border:1px solid var(--line); border-radius:10px; margin-bottom:8px; cursor:pointer;
+             background:#060c1b; transition:.15s; }
+  .msgs li:hover { border-color:var(--neon); }
+  .msgs li.new { border-color:var(--neon); animation:flash 1.2s ease 2; }
+  @keyframes flash { 50% { box-shadow:0 0 20px rgba(0,229,255,.55); } }
+  .msgs .from { font-size:12px; color:var(--muted); display:flex; justify-content:space-between; gap:8px; }
+  .msgs .subj { font-weight:600; margin:4px 0 2px; }
+  .msgs .intro { font-size:13px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chip { display:inline-block; margin-top:8px; padding:3px 10px; border-radius:6px; font-size:12px; cursor:pointer;
+          font-family:var(--mono); color:#001018; font-weight:700; background:var(--neon); }
+  .chip.link { background:transparent; color:var(--neon); border:1px solid var(--line2); font-weight:500; }
+  .empty { text-align:center; color:var(--muted); font-size:14px; padding:18px 0; }
+
+  .codecard { border:1px solid var(--neon); border-radius:14px; padding:16px; margin-bottom:14px; text-align:center; background:#050a17; }
+  .codecard .lbl { font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:var(--muted); }
+  .codecard .big { font-family:var(--mono); font-size:40px; font-weight:700; letter-spacing:8px;
+                   color:var(--neon); text-shadow:0 0 12px rgba(0,229,255,.7); margin:8px 0 12px; word-break:break-all; cursor:pointer; }
+  .acts { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+
+  .viewer iframe { width:100%; height:440px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+  .viewer pre { white-space:pre-wrap; word-break:break-word; background:#050a17; border:1px solid var(--line);
+                border-radius:10px; padding:12px; max-height:440px; overflow:auto; }
+  .banner { border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:10px; text-align:center; background:#050a17; }
+  .banner b { font-family:var(--mono); font-size:28px; letter-spacing:6px; color:var(--neon);
+              text-shadow:0 0 10px rgba(0,229,255,.6); display:block; margin-bottom:8px; }
+
+  /* Шаги Steam */
+  .steps { list-style:none; margin:14px 0 0; padding:0; counter-reset:s; }
+  .steps li { counter-increment:s; display:flex; gap:10px; align-items:center; padding:8px 0; font-size:13px; color:var(--muted); }
+  .steps li::before { content:counter(s); flex:none; width:24px; height:24px; border-radius:50%; display:grid; place-items:center;
+                      border:1px solid var(--line2); font-family:var(--mono); font-size:12px; }
+  .steps li.active { color:var(--text); }
+  .steps li.active::before { border-color:var(--neon); color:var(--neon); box-shadow:0 0 10px rgba(0,229,255,.5); }
+  .steps li.done { color:var(--ok); }
+  .steps li.done::before { content:"✓"; border-color:var(--ok); color:var(--ok); }
+
+  .toast { position:fixed; left:50%; bottom:22px; transform:translate(-50%,160%); transition:transform .3s;
+           background:#06102a; border:1px solid var(--neon); border-radius:12px; padding:12px 18px; z-index:10;
+           box-shadow:0 0 24px rgba(0,229,255,.35); font-size:14px; max-width:calc(100% - 32px); text-align:center; }
+  .toast.show { transform:translate(-50%,0); }
+  .toast b { color:var(--neon); font-family:var(--mono); letter-spacing:3px; }
+  .note { font-size:12px; color:var(--muted); line-height:1.55; text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1 class="logo">NEXUS<span>MAIL</span></h1>
+      <div class="tag" data-i18n="tagline"></div>
+    </div>
+    <button class="gear" id="gear" data-i18n-title="settings">⚙</button>
+  </header>
+
+  <section class="panel hidden" id="settings">
+    <h2 data-i18n="settings"></h2>
+    <div class="set-row"><span data-i18n="language"></span>
+      <div class="seg" id="langSeg"><button data-lang="ru">RU</button><button data-lang="en">EN</button></div></div>
+    <div class="set-row"><span data-i18n="optAutocopy"></span>
+      <label class="sw"><input type="checkbox" id="optAutocopy"><span></span></label></div>
+    <div class="set-row"><span data-i18n="optAutoverify"></span>
+      <label class="sw"><input type="checkbox" id="optAutoverify"><span></span></label></div>
+    <div class="set-row"><span data-i18n="optSound"></span>
+      <label class="sw"><input type="checkbox" id="optSound"><span></span></label></div>
+    <div class="set-row"><span data-i18n="optNotify"></span>
+      <label class="sw"><input type="checkbox" id="optNotify"><span></span></label></div>
+  </section>
+
+  <nav class="tabs">
+    <button data-tab="mail" data-i18n="tabMail"></button>
+    <button data-tab="steam" data-i18n="tabSteam"></button>
+  </nav>
+
+  <!-- ===== Вкладка «Почта» ===== -->
+  <div id="tab-mail">
+    <!-- список ящиков -->
+    <div id="mailList">
+      <section class="panel">
+        <button class="create" id="create"><span data-i18n="create"></span><span class="cur"></span></button>
+        <div class="status" id="status"></div>
+      </section>
+      <section class="panel">
+        <h2><span data-i18n="myBoxes"></span><button class="btn danger hidden" id="clearAcc" data-i18n="clear"></button></h2>
+        <ul class="boxes" id="boxList"></ul>
+      </section>
+    </div>
+
+    <!-- открытый ящик -->
+    <div id="mailBox" class="hidden">
+      <div class="backbar">
+        <button class="btn" id="toList" data-i18n="allBoxes"></button>
+        <button class="btn danger" id="delBox" data-i18n="delete"></button>
+      </div>
+      <section class="panel">
+        <div class="field" style="margin-top:0">
+          <label data-i18n="email"></label>
+          <div class="row"><code id="email"></code><button class="btn" data-copy="email" data-i18n="copy"></button></div>
+        </div>
+        <div class="field">
+          <label data-i18n="password"></label>
+          <div class="row"><code id="pass"></code><button class="btn" data-copy="pass" data-i18n="copy"></button></div>
+        </div>
+        <div id="steamCreds" class="hidden">
+          <div class="field">
+            <label data-i18n="steamLogin"></label>
+            <div class="row"><code id="sLoginOut"></code><button class="btn" data-copy="sLoginOut" data-i18n="copy"></button></div>
+          </div>
+          <div class="field">
+            <label data-i18n="steamPass"></label>
+            <div class="row"><code id="sPassOut"></code><button class="btn" data-copy="sPassOut" data-i18n="copy"></button></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="codecard hidden" id="codeCard">
+          <div class="lbl" id="codeFrom"></div>
+          <div class="big" id="codeBig"></div>
+          <div class="acts">
+            <button class="btn solid" id="codeCopy" data-i18n="copyCode"></button>
+            <button class="btn hidden" id="codeLink" data-i18n="confirmLink"></button>
+            <button class="btn" id="codeOpen" data-i18n="openMail"></button>
+          </div>
+        </div>
+        <div class="codecard hidden" id="linkCard">
+          <div class="lbl" id="linkFrom"></div>
+          <div class="acts" style="margin-top:10px">
+            <button class="btn solid" id="linkBtn" data-i18n="confirmLink"></button>
+            <button class="btn" id="linkOpen" data-i18n="openMail"></button>
+          </div>
+        </div>
+        <div id="inboxView">
+          <h2><span><span class="live"></span><span data-i18n="inbox"></span></span>
+            <button class="btn" id="refresh" data-i18n="refresh"></button></h2>
+          <ul class="msgs" id="msgs"></ul>
+        </div>
+        <div class="viewer hidden" id="viewer">
+          <h2><span id="vSubj"></span><button class="btn" id="vClose" data-i18n="back"></button></h2>
+          <div id="vBody"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ===== Вкладка «Steam» ===== -->
+  <div id="tab-steam" class="hidden">
+    <section class="panel">
+      <h2><span data-i18n="steamTitle"></span></h2>
+      <div class="field" style="margin-top:0">
+        <label for="sLogin" data-i18n="steamLogin"></label>
+        <div class="row"><input id="sLogin" class="inp" maxlength="32" autocomplete="off" spellcheck="false">
+          <button class="btn" id="sLoginGen" data-i18n="auto"></button></div>
+      </div>
+      <div class="field">
+        <label for="sPass" data-i18n="steamPass"></label>
+        <div class="row"><input id="sPass" class="inp" maxlength="64" autocomplete="off" spellcheck="false">
+          <button class="btn" id="sPassGen" data-i18n="auto"></button></div>
+      </div>
+      <div class="hint" data-i18n="steamHint"></div>
+      <button class="create" id="steamGo" style="margin-top:14px"><span data-i18n="steamGo"></span><span class="cur"></span></button>
+      <div class="status" id="steamStatus"></div>
+      <ol class="steps hidden" id="steamSteps">
+        <li data-step="mail" data-i18n="stepMail"></li>
+        <li data-step="captcha" data-i18n="stepCaptcha"></li>
+        <li data-step="verify" data-i18n="stepVerify"></li>
+        <li data-step="finish" data-i18n="stepFinish"></li>
+      </ol>
+    </section>
+    <section class="panel">
+      <h2><span data-i18n="steamAccounts"></span></h2>
+      <ul class="boxes" id="steamList"></ul>
+    </section>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <p class="note" data-i18n="footer"></p>
+</div>
+
+<script>
+(() => {
+  const API = 'https://api.mail.tm';
+  const STEAM_JOIN = 'https://store.steampowered.com/join/';
+  const desktop = window.nexus && window.nexus.isDesktop ? window.nexus : null;
+  const $ = id => document.getElementById(id);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+  };
+
+  // ---------- языки ----------
+  const I18N = {
+    ru: {
+      tagline:'Настоящая почта в один клик', settings:'Настройки', language:'Язык',
+      optAutocopy:'Автокопирование нового кода', optAutoverify:'Автоподтверждение почты Steam',
+      optSound:'Звук при новом письме', optNotify:'Уведомления Windows',
+      tabMail:'✉ Почта', tabSteam:'Steam',
+      create:'Создать почту', creating:'Создаём ящик…', created:'Готово! Почта создана ✓',
+      myBoxes:'Мои ящики', allBoxes:'← Все ящики', delete:'Удалить', clear:'Очистить всё',
+      noBoxes:'Ящиков пока нет — нажмите «Создать почту»', mails:'писем: {n}',
+      email:'Почта', password:'Пароль', copy:'Копировать', copied:'✓',
+      copyCode:'Копировать код', confirmLink:'Подтвердить по ссылке ↗', openMail:'Открыть письмо',
+      inbox:'Входящие', refresh:'Обновить', back:'Назад', loading:'Загрузка…', noSubject:'(без темы)',
+      empty:'Писем пока нет — коды появятся здесь автоматически', error:'Ошибка: ',
+      lastCode:'Последний код', linkConfirm:'Ссылка подтверждения',
+      codeCopied:'Код <b></b> скопирован', newCode:'Новый код от {who}: <b></b>', newCodeCopied:'Новый код от {who}: <b></b> — скопирован',
+      newMail:'Новое письмо от {who}', notifCode:'Код: {code}', notifMail:'NexusMail: новое письмо',
+      notifDenied:'Уведомления запрещены в настройках', clearConfirm:'Удалить все ящики из списка?', delConfirm:'Удалить этот ящик из списка?',
+      noNet:'Нет связи с сервером mail.tm', noDomains:'Сервис сейчас не выдаёт домены',
+      noFree:'Не удалось подобрать свободный адрес', tooMany:'Слишком много запросов, подождите пару секунд',
+      footer:'Ящики создаются через бесплатный сервис mail.tm — это реальные адреса, которые принимают письма. Данные для входа хранятся только на этом компьютере.',
+      steamTitle:'Регистрация Steam', steamLogin:'Логин Steam', steamPass:'Пароль Steam', auto:'🎲 Авто',
+      loginPh:'свой логин или «Авто»', passPh:'свой пароль или «Авто»',
+      steamHint:'Логин и пароль можно вписать самому или оставить пустыми — они сгенерируются. Нажмите кнопку: создастся почта и откроется окно Steam — почта и страна (Украина) уже будут выбраны. Отметьте согласие и пройдите капчу; почта подтвердится автоматически, а логин и пароль подставятся, когда Steam откроет эти поля.',
+      steamHintWeb:'В браузерной версии окно Steam откроется в новой вкладке, а почта будет скопирована — вставьте её. Полная автоподстановка работает в программе NexusMail.exe.',
+      openBox:'Открыть ящик ›', emailPass:'Пароль почты',
+      steamGo:'Создать аккаунт Steam', steamAccounts:'Аккаунты Steam', noSteam:'Пока нет аккаунтов Steam',
+      steamOpened:'Окно Steam открыто — пройдите капчу', steamWeb:'Почта скопирована — вставьте её на странице Steam',
+      steamVerifying:'Письмо Steam получено — подтверждаем почту…', steamVerified:'Почта подтверждена ✓ Нажмите «Готово» в окне Steam',
+      steamClosed:'Окно Steam закрыто', openSteam:'Открыть регистрацию Steam ↗',
+      stepMail:'Почта создана', stepCaptcha:'Отметьте согласие и пройдите капчу в окне Steam',
+      stepVerify:'Подтверждение почты (автоматически)', stepFinish:'Логин и пароль подставлены — нажмите «Готово»',
+      badLogin:'Логин Steam: 3–32 символа, только латиница, цифры и _', badPass:'Пароль Steam: минимум 8 символов'
+    },
+    en: {
+      tagline:'Real email in one click', settings:'Settings', language:'Language',
+      optAutocopy:'Auto-copy new codes', optAutoverify:'Auto-confirm Steam email',
+      optSound:'Sound on new mail', optNotify:'Desktop notifications',
+      tabMail:'✉ Mail', tabSteam:'Steam',
+      create:'Create email', creating:'Creating mailbox…', created:'Done! Mailbox created ✓',
+      myBoxes:'My mailboxes', allBoxes:'← All mailboxes', delete:'Delete', clear:'Clear all',
+      noBoxes:'No mailboxes yet — press “Create email”', mails:'emails: {n}',
+      email:'Email', password:'Password', copy:'Copy', copied:'✓',
+      copyCode:'Copy code', confirmLink:'Confirm via link ↗', openMail:'Open email',
+      inbox:'Inbox', refresh:'Refresh', back:'Back', loading:'Loading…', noSubject:'(no subject)',
+      empty:'No mail yet — codes will appear here automatically', error:'Error: ',
+      lastCode:'Latest code', linkConfirm:'Confirmation link',
+      codeCopied:'Code <b></b> copied', newCode:'New code from {who}: <b></b>', newCodeCopied:'New code from {who}: <b></b> — copied',
+      newMail:'New email from {who}', notifCode:'Code: {code}', notifMail:'NexusMail: new email',
+      notifDenied:'Notifications are blocked in settings', clearConfirm:'Remove all mailboxes from the list?', delConfirm:'Remove this mailbox from the list?',
+      noNet:'Cannot reach mail.tm', noDomains:'The service has no domains available right now',
+      noFree:'Could not find a free address', tooMany:'Too many requests, wait a couple of seconds',
+      footer:'Mailboxes are created via the free mail.tm service — real addresses that receive mail. Login details are stored only on this computer.',
+      steamTitle:'Steam sign-up', steamLogin:'Steam login', steamPass:'Steam password', auto:'🎲 Auto',
+      loginPh:'your login or “Auto”', passPh:'your password or “Auto”',
+      steamHint:'Type your own login and password or leave them empty to generate. Press the button: a mailbox is created and a Steam window opens with the email and country (Ukraine) already set. Tick the agreement and solve the captcha; the email is confirmed automatically and the login and password are filled in once Steam shows those fields.',
+      steamHintWeb:'In the browser version Steam opens in a new tab and the email is copied — paste it there. Full auto-fill works in the NexusMail.exe app.',
+      openBox:'Open mailbox ›', emailPass:'Email password',
+      steamGo:'Create Steam account', steamAccounts:'Steam accounts', noSteam:'No Steam accounts yet',
+      steamOpened:'Steam window is open — solve the captcha', steamWeb:'Email copied — paste it on the Steam page',
+      steamVerifying:'Steam email received — confirming…', steamVerified:'Email confirmed ✓ Press “Done” in the Steam window',
+      steamClosed:'Steam window closed', openSteam:'Open Steam sign-up ↗',
+      stepMail:'Mailbox created', stepCaptcha:'Tick the agreement and solve the captcha in the Steam window',
+      stepVerify:'Email confirmation (automatic)', stepFinish:'Login and password filled in — press “Done”',
+      badLogin:'Steam login: 3–32 chars, Latin letters, digits and _ only', badPass:'Steam password: at least 8 characters'
+    }
+  };
+  const settings = Object.assign({ lang:'ru', autocopy:true, autoverify:true, sound:true, notify:false, tab:'mail' }, store.get('nexus.settings', {}));
+  const t = (k, vars) => {
+    let s = (I18N[settings.lang] || I18N.ru)[k] ?? I18N.ru[k] ?? k;
+    if (vars) for (const [a, b] of Object.entries(vars)) s = s.replace('{' + a + '}', b);
+    return s;
+  };
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  const saveSettings = () => store.set('nexus.settings', settings);
+
+  // статусные строки, которые переводятся при смене языка
+  const statuses = {};
+  function setStatus(id, key, kind, extra = '') {
+    statuses[id] = key ? { key, kind, extra } : null;
+    const el = $(id);
+    el.textContent = key ? t(key) + extra : '';
+    el.classList.toggle('err', kind === 'err'); el.classList.toggle('ok', kind === 'ok');
+  }
+
+  function applyLang() {
+    document.documentElement.lang = settings.lang;
+    document.querySelectorAll('[data-i18n]').forEach(el => el.textContent = t(el.dataset.i18n));
+    document.querySelectorAll('[data-i18n-title]').forEach(el => el.title = t(el.dataset.i18nTitle));
+    document.querySelectorAll('#langSeg button').forEach(b => b.classList.toggle('on', b.dataset.lang === settings.lang));
+    $('codeBig').title = t('copyCode');
+    $('sLogin').placeholder = t('loginPh'); $('sPass').placeholder = t('passPh');
+    if (!desktop) document.querySelector('#tab-steam .hint').textContent = t('steamHint') + ' ' + t('steamHintWeb');
+    for (const [id, s] of Object.entries(statuses)) if (s) setStatus(id, s.key, s.kind, s.extra);
+    if (current) renderInbox(lastMsgs, new Set());
+    renderLists();
+  }
+
+  // ---------- случайные данные ----------
+  function rnd(n) { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; }
+  function pick(s) { return s[rnd(s.length)]; }
+  const LOWER = 'abcdefghijkmnopqrstuvwxyz', UPPER = 'ABCDEFGHJKLMNPQRSTUVWXYZ', DIGIT = '23456789', SYM = '!@#$%&*?';
+  function randomPassword(len = 10) {
+    const all = LOWER + UPPER + DIGIT + SYM;
+    const chars = [pick(LOWER), pick(UPPER), pick(DIGIT), pick(SYM)];
+    while (chars.length < len) chars.push(pick(all));
+    for (let i = chars.length - 1; i > 0; i--) { const j = rnd(i + 1); [chars[i], chars[j]] = [chars[j], chars[i]]; }
+    return chars.join('');
+  }
+  const WORDS = ['nexus','neon','pixel','cyber','nova','orbit','quantum','vector','flux','echo','zen','byte',
+                 'storm','shadow','pulse','astro','blaze','frost','lunar','spark','vortex','drift','prism'];
+  function randomLogin() { let s = pick(WORDS) + pick(WORDS); for (let i = 0; i < 4; i++) s += pick('0123456789'); return s; }
+  function steamLogin() { let s = pick(WORDS) + '_' + pick(WORDS); for (let i = 0; i < 3; i++) s += pick('0123456789'); return s; }
+
+  // ---------- API mail.tm ----------
+  async function api(path, { method = 'GET', body, token } = {}) {
+    const headers = { 'Accept': 'application/json' };
+    if (body) headers['Content-Type'] = 'application/json';
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const r = await fetch(API + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    if (r.status === 429) throw new Error(t('tooMany'));
+    if (!r.ok) {
+      let msg = 'HTTP ' + r.status;
+      try { const j = await r.json(); msg = j['hydra:description'] || j.detail || j.message || msg; } catch {}
+      const e = new Error(msg); e.status = r.status; throw e;
+    }
+    return r.status === 204 ? null : r.json();
+  }
+  const list = j => j['hydra:member'] || j.member || (Array.isArray(j) ? j : []);
+
+  async function createAccount() {
+    const domains = list(await api('/domains')).filter(d => d.isActive !== false && !d.isPrivate);
+    if (!domains.length) throw new Error(t('noDomains'));
+    const domain = domains[rnd(domains.length)].domain;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const address = randomLogin() + '@' + domain;
+      const password = randomPassword(10);
+      try { await api('/accounts', { method: 'POST', body: { address, password } }); }
+      catch (e) { if (e.status === 422) continue; throw e; }
+      const { token } = await api('/token', { method: 'POST', body: { address, password } });
+      return { address, password, token, created: Date.now() };
+    }
+    throw new Error(t('noFree'));
+  }
+
+  // ---------- поиск кода и ссылки в письме ----------
+  function htmlToText(html) {
+    const prepared = html.replace(/<(br|\/p|\/div|\/tr|\/td|\/th|\/h\d|\/li|\/table)[^>]*>/gi, '\n');
+    const doc = new DOMParser().parseFromString(prepared, 'text/html');
+    doc.querySelectorAll('script,style,head').forEach(e => e.remove());
+    return doc.body ? doc.body.textContent : '';
+  }
+  const KW = /(code|код|pin|otp|passcode|verif|подтвер|guard|login|log in|sign in|вход|войти|одноразов|security|безопасн|token)/i;
+  const isYear = s => /^(19|20)\d\d$/.test(s);
+  function extractCode(subject, text) {
+    text = (text || '').replace(/ /g, ' ');
+    if (!KW.test(subject || '') && !KW.test(text)) return null;
+    // 1) код отдельной строкой (так пишет Steam Guard: «F7K2N»)
+    for (const l of text.split(/\r?\n/).map(l => l.trim()).filter(Boolean)) {
+      const m = l.match(/^([A-Z0-9]{4,8})$/) || l.match(/^(\d{3}[ -]\d{3})$/) || l.match(/^((?:\d ){3,7}\d)$/);
+      if (m) { const c = m[1].replace(/[ -]/g, ''); if (!isYear(c)) return c; }
+    }
+    // 2) код рядом с ключевым словом
+    const re = new RegExp(KW.source, 'gi'); let k;
+    while ((k = re.exec(text))) {
+      const tail = text.slice(k.index, k.index + 160);
+      const m = tail.match(/\b(\d{3}[ -]\d{3})\b/) || tail.match(/\b(?=[A-Z0-9]*\d)([A-Z0-9]{4,8})\b/);
+      if (m) { const c = m[1].replace(/[ -]/g, ''); if (!isYear(c)) return c; }
+    }
+    // 3) код в теме письма
+    const sm = (subject || '').match(/\b(\d{4,8})\b/);
+    if (sm && !isYear(sm[1])) return sm[1];
+    return null;
+  }
+  const LINK_RE = /(verif|confirm|activat|validat|подтвер|активир|newaccountverification|magic|reset|login|signin|sign-in)/i;
+  const STEAM_VERIFY_RE = /^https:\/\/([a-z0-9-]+\.)*(steampowered|steamcommunity)\.com\/.*(newaccountverification|verif)/i;
+  function extractLink(html, text) {
+    const cands = [];
+    if (html) new DOMParser().parseFromString(html, 'text/html').querySelectorAll('a[href]')
+      .forEach(a => cands.push({ href: a.getAttribute('href'), label: a.textContent || '' }));
+    (text || '').replace(/https?:\/\/[^\s<>"')\]]+/g, u => { cands.push({ href: u, label: '' }); return u; });
+    const ok = cands.filter(c => /^https?:\/\//i.test(c.href) && !/unsubscribe|отпис|privacy|support/i.test(c.href + c.label));
+    const hit = ok.find(c => LINK_RE.test(c.href) || LINK_RE.test(c.label));
+    return hit ? hit.href : null;
+  }
+
+  // ---------- состояние ----------
+  let accounts = store.get('nexus.accounts', []);
+  let current = null, pollTimer = null, lastMsgs = [], loading = false;
+  const details = new Map();   // id письма -> { subject, html, text, code, link }
+  const known = new Map();     // адрес -> Set id уже показанных писем
+  const counts = new Map();    // адрес -> число писем
+  let steamFlow = null;        // аккаунт, для которого сейчас идёт регистрация Steam
+
+  const saveAccounts = () => store.set('nexus.accounts', accounts.map(({ token, ...a }) => a));
+
+  async function copyText(text, btn) {
+    try { await navigator.clipboard.writeText(text); }
+    catch { const ta = document.createElement('textarea'); ta.value = text; document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+    if (btn) { const o = btn.textContent; btn.textContent = t('copied'); btn.classList.add('done');
+               setTimeout(() => { btn.textContent = o; btn.classList.remove('done'); }, 1100); }
+  }
+
+  // ---------- вкладки и экраны ----------
+  function setTab(tab) {
+    settings.tab = tab; saveSettings();
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+    $('tab-mail').classList.toggle('hidden', tab !== 'mail');
+    $('tab-steam').classList.toggle('hidden', tab !== 'steam');
+  }
+  function showList() {
+    $('mailBox').classList.add('hidden'); $('mailList').classList.remove('hidden');
+    renderLists();
+  }
+  function openBox(acc) {
+    setTab('mail');
+    selectAccount(acc);
+    $('mailList').classList.add('hidden'); $('mailBox').classList.remove('hidden');
+    window.scrollTo({ top: 0 });
+  }
+
+  // выбрать ящик для опроса (без переключения экрана)
+  function selectAccount(acc) {
+    if (current !== acc) {
+      current = acc; lastMsgs = [];
+      $('codeCard').classList.add('hidden'); $('linkCard').classList.add('hidden');
+      $('msgs').innerHTML = '<div class="empty">' + esc(t('loading')) + '</div>';
+      clearInterval(pollTimer);
+      loadInbox();
+      pollTimer = setInterval(loadInbox, 5000);
+    }
+    closeViewer();
+    $('email').textContent = acc.address;
+    $('pass').textContent = acc.password;
+    $('steamCreds').classList.toggle('hidden', !acc.steam);
+    if (acc.steam) { $('sLoginOut').textContent = acc.steam.login; $('sPassOut').textContent = acc.steam.pass; }
+    renderLists();
+  }
+
+  function boxItem(acc, steamView) {
+    const li = document.createElement('li');
+    if (acc === current) li.classList.add('cur');
+    const ico = document.createElement('div'); ico.className = 'ico' + (acc.steam ? ' steam' : ''); ico.textContent = acc.steam ? '◆' : '✉';
+    const info = document.createElement('div'); info.className = 'info';
+    const a = document.createElement('div'); a.className = 'addr'; a.textContent = steamView ? acc.steam.login : acc.address;
+    const meta = document.createElement('div'); meta.className = 'meta';
+    const parts = [steamView ? acc.address : (acc.steam ? 'Steam: ' + acc.steam.login : null),
+                   new Date(acc.created).toLocaleString(settings.lang),
+                   counts.has(acc.address) ? t('mails', { n: counts.get(acc.address) }) : null].filter(Boolean);
+    meta.textContent = parts.join(' · ');
+    info.append(a, meta);
+    const cp = document.createElement('button'); cp.className = 'btn icon'; cp.textContent = '⧉'; cp.title = t('copy');
+    cp.onclick = e => { e.stopPropagation(); copyText(steamView ? acc.steam.login : acc.address, cp); };
+    const arrow = document.createElement('span'); arrow.className = 'arrow'; arrow.textContent = '›';
+    li.append(ico, info, cp, arrow);
+    li.onclick = () => openBox(acc);
+    return li;
+  }
+  // Steam: по нажатию на логин раскрываются логин/пароль Steam и почта/пароль почты
+  const openSteamItems = new Set();
+  function steamItem(acc) {
+    const wrap = document.createElement('div'); wrap.className = 'sitem';
+    const head = boxItem(acc, true);
+    head.onclick = () => {
+      if (openSteamItems.has(acc.address)) openSteamItems.delete(acc.address); else openSteamItems.add(acc.address);
+      wrap.classList.toggle('open'); det.classList.toggle('hidden');
+    };
+    const det = document.createElement('div'); det.className = 'sdet';
+    const open = openSteamItems.has(acc.address);
+    wrap.classList.toggle('open', open); det.classList.toggle('hidden', !open);
+    for (const [k, v] of [['steamLogin', acc.steam.login], ['steamPass', acc.steam.pass], ['email', acc.address], ['emailPass', acc.password]]) {
+      const row = document.createElement('div'); row.className = 'kv';
+      const kk = document.createElement('span'); kk.className = 'k'; kk.textContent = t(k);
+      const vv = document.createElement('span'); vv.className = 'v'; vv.textContent = v;
+      const cp = document.createElement('button'); cp.className = 'btn icon'; cp.textContent = '⧉'; cp.title = t('copy');
+      cp.onclick = () => copyText(v, cp);
+      row.append(kk, vv, cp); det.append(row);
+    }
+    const acts = document.createElement('div'); acts.className = 'acts';
+    const ob = document.createElement('button'); ob.className = 'btn solid'; ob.textContent = t('openBox');
+    ob.onclick = () => openBox(acc);
+    acts.append(ob); det.append(acts);
+    wrap.append(head, det);
+    return wrap;
+  }
+
+  function renderLists() {
+    const ul = $('boxList'); ul.innerHTML = '';
+    $('clearAcc').classList.toggle('hidden', !accounts.length);
+    if (!accounts.length) ul.innerHTML = '<div class="empty">' + esc(t('noBoxes')) + '</div>';
+    accounts.forEach(acc => ul.append(boxItem(acc, false)));
+    const sl = $('steamList'); sl.innerHTML = '';
+    const steamAcc = accounts.filter(a => a.steam);
+    if (!steamAcc.length) sl.innerHTML = '<div class="empty">' + esc(t('noSteam')) + '</div>';
+    steamAcc.forEach(acc => sl.append(steamItem(acc)));
+  }
+
+  // ---------- входящие ----------
+  async function ensureToken(acc) {
+    if (acc.token) return acc.token;
+    const { token } = await api('/token', { method: 'POST', body: { address: acc.address, password: acc.password } });
+    acc.token = token; return token;
+  }
+  async function authed(acc, path) {
+    try { return await api(path, { token: await ensureToken(acc) }); }
+    catch (e) { if (e.status === 401) { acc.token = null; return api(path, { token: await ensureToken(acc) }); } throw e; }
+  }
+  async function getDetails(acc, id) {
+    if (details.has(id)) return details.get(id);
+    const m = await authed(acc, '/messages/' + encodeURIComponent(id));
+    const html = Array.isArray(m.html) ? m.html.join('') : (m.html || '');
+    const text = m.text || (html ? htmlToText(html) : '');
+    const d = { subject: m.subject || '', html, text, code: extractCode(m.subject, text), link: extractLink(html, text) };
+    details.set(id, d);
+    return d;
+  }
+  const senderName = m => (m.from && (m.from.name || m.from.address)) || '—';
+
+  async function loadInbox() {
+    const acc = current; if (!acc || loading) return;
+    loading = true;
+    try {
+      const msgs = list(await authed(acc, '/messages'));
+      if (acc !== current) return;
+      const firstLoad = !known.has(acc.address);
+      const seen = known.get(acc.address) || new Set();
+      const fresh = msgs.filter(m => !seen.has(m.id));
+      for (const m of msgs.slice(0, 15)) { try { await getDetails(acc, m.id); } catch {} if (acc !== current) return; }
+      msgs.forEach(m => seen.add(m.id)); known.set(acc.address, seen);
+      if (counts.get(acc.address) !== msgs.length) { counts.set(acc.address, msgs.length); renderLists(); }
+      lastMsgs = msgs;
+      renderInbox(msgs, firstLoad ? new Set() : new Set(fresh.map(m => m.id)));
+      if (!firstLoad) fresh.forEach(announce);
+      autoVerifySteam(acc, msgs);
+    } catch (e) {
+      $('msgs').innerHTML = '<div class="empty">' + esc(t('error') + e.message) + '</div>';
+    } finally { loading = false; }
+  }
+
+  // письмо Steam со ссылкой подтверждения -> открыть её в той же сессии, что и регистрация
+  function autoVerifySteam(acc, msgs) {
+    if (!acc.steam || acc.steamVerified || !settings.autoverify) return;
+    for (const m of msgs) {
+      const d = details.get(m.id);
+      if (d && d.link && STEAM_VERIFY_RE.test(d.link)) {
+        acc.steamVerified = true; saveAccounts();
+        setStatus('steamStatus', 'steamVerifying');
+        setSteps('verify');
+        if (desktop) desktop.steamVerify(d.link); else openLink(d.link);
+        return;
+      }
+    }
+  }
+
+  function renderInbox(msgs, freshIds) {
+    const ul = $('msgs'); ul.innerHTML = '';
+    const withCode = msgs.find(m => details.get(m.id)?.code);
+    const withLink = msgs.find(m => details.get(m.id)?.link);
+    $('codeCard').classList.toggle('hidden', !withCode);
+    if (withCode) {
+      const d = details.get(withCode.id);
+      $('codeFrom').textContent = t('lastCode') + ' · ' + senderName(withCode) + ' · ' + new Date(withCode.createdAt).toLocaleTimeString(settings.lang);
+      $('codeBig').textContent = d.code;
+      $('codeLink').classList.toggle('hidden', !d.link);
+      $('codeLink').onclick = () => followLink(d.link);
+      $('codeOpen').onclick = () => openMessage(withCode.id);
+    }
+    const showLinkCard = withLink && (!withCode || withLink.id !== withCode.id);
+    $('linkCard').classList.toggle('hidden', !showLinkCard);
+    if (showLinkCard) {
+      $('linkFrom').textContent = t('linkConfirm') + ' · ' + senderName(withLink);
+      $('linkBtn').onclick = () => followLink(details.get(withLink.id).link);
+      $('linkOpen').onclick = () => openMessage(withLink.id);
+    }
+    if (!msgs.length) { ul.innerHTML = '<div class="empty">' + esc(t('empty')) + '</div>'; return; }
+    msgs.forEach(m => {
+      const d = details.get(m.id) || {};
+      const li = document.createElement('li'); if (freshIds.has(m.id)) li.classList.add('new');
+      const from = document.createElement('div'); from.className = 'from';
+      const a = document.createElement('span'); a.textContent = senderName(m);
+      const tm = document.createElement('span'); tm.textContent = new Date(m.createdAt).toLocaleString(settings.lang);
+      from.append(a, tm);
+      const s = document.createElement('div'); s.className = 'subj'; s.textContent = m.subject || t('noSubject');
+      const i = document.createElement('div'); i.className = 'intro'; i.textContent = m.intro || '';
+      li.append(from, s, i);
+      if (d.code) {
+        const c = document.createElement('span'); c.className = 'chip'; c.textContent = d.code + '  ⧉'; c.title = t('copyCode');
+        c.onclick = e => { e.stopPropagation(); copyText(d.code); toast(t('codeCopied'), d.code); };
+        li.append(c);
+      } else if (d.link) {
+        const c = document.createElement('span'); c.className = 'chip link'; c.textContent = t('confirmLink');
+        c.onclick = e => { e.stopPropagation(); followLink(d.link); };
+        li.append(c);
+      }
+      li.onclick = () => openMessage(m.id);
+      ul.append(li);
+    });
+  }
+
+  function openLink(url) { if (url) window.open(url, '_blank', 'noopener'); }
+  // ссылки Steam в программе открываем в окне Steam (та же сессия), остальное — в браузере
+  function followLink(url) { if (desktop && STEAM_VERIFY_RE.test(url)) desktop.steamVerify(url); else openLink(url); }
+
+  let toastTimer;
+  function toast(html, code) {
+    const el = $('toast'); el.innerHTML = html;
+    const b = el.querySelector('b'); if (b && code) b.textContent = code;
+    el.classList.add('show'); clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 4000);
+  }
+  function beep() {
+    if (!settings.sound) return;
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = 880; g.gain.setValueAtTime(.08, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + .35);
+      o.connect(g).connect(ctx.destination); o.start(); o.stop(ctx.currentTime + .35);
+    } catch {}
+  }
+  function announce(m) {
+    const d = details.get(m.id) || {};
+    const who = esc(senderName(m));
+    beep();
+    if (d.code) {
+      if (settings.autocopy) { copyText(d.code).catch(() => {}); toast(t('newCodeCopied', { who }), d.code); }
+      else toast(t('newCode', { who }), d.code);
+    } else toast(t('newMail', { who }));
+    try {
+      if (settings.notify && 'Notification' in window && Notification.permission === 'granted') {
+        const n = new Notification(d.code ? t('notifCode', { code: d.code }) : t('notifMail'), { body: senderName(m) + ' — ' + (m.subject || '') });
+        n.onclick = () => { window.focus(); if (current) openBox(current); openMessage(m.id); n.close(); };
+      }
+    } catch {}
+  }
+
+  async function openMessage(id) {
+    $('inboxView').classList.add('hidden'); $('viewer').classList.remove('hidden');
+    $('vSubj').textContent = t('loading'); $('vBody').innerHTML = '';
+    try {
+      const d = await getDetails(current, id);
+      $('vSubj').textContent = d.subject || t('noSubject');
+      if (d.code || d.link) {
+        const bn = document.createElement('div'); bn.className = 'banner';
+        if (d.code) { const b = document.createElement('b'); b.textContent = d.code; bn.append(b); }
+        const acts = document.createElement('div'); acts.className = 'acts';
+        if (d.code) { const c = document.createElement('button'); c.className = 'btn solid'; c.textContent = t('copyCode');
+                      c.onclick = () => copyText(d.code, c); acts.append(c); }
+        if (d.link) { const l = document.createElement('button'); l.className = 'btn'; l.textContent = t('confirmLink');
+                      l.onclick = () => followLink(d.link); acts.append(l); }
+        bn.append(acts); $('vBody').append(bn);
+      }
+      if (d.html) {
+        const f = document.createElement('iframe');
+        f.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox'); // без скриптов; ссылки — во внешнем браузере
+        f.srcdoc = '<base target="_blank">' + d.html; $('vBody').append(f);
+      } else {
+        const p = document.createElement('pre'); p.textContent = d.text || ''; $('vBody').append(p);
+      }
+    } catch (e) { $('vSubj').textContent = t('error') + e.message; }
+  }
+  function closeViewer() { $('viewer').classList.add('hidden'); $('inboxView').classList.remove('hidden'); }
+
+  // ---------- кнопки «Почта» ----------
+  function addAccount(acc) { accounts.unshift(acc); accounts = accounts.slice(0, 50); saveAccounts(); }
+  $('create').onclick = async () => {
+    const b = $('create'); b.disabled = true; setStatus('status', 'creating');
+    try {
+      const acc = await createAccount();
+      addAccount(acc);
+      setStatus('status', 'created', 'ok');
+      openBox(acc);
+    } catch (e) {
+      if (e instanceof TypeError) setStatus('status', 'noNet', 'err'); else setStatus('status', 'error', 'err', e.message);
+    } finally { b.disabled = false; }
+  };
+  document.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => copyText($(b.dataset.copy).textContent, b));
+  $('toList').onclick = showList;
+  $('delBox').onclick = () => {
+    if (!current || !confirm(t('delConfirm'))) return;
+    accounts = accounts.filter(a => a !== current); saveAccounts();
+    current = null; clearInterval(pollTimer); showList();
+  };
+  $('refresh').onclick = loadInbox;
+  $('vClose').onclick = closeViewer;
+  $('codeCopy').onclick = () => copyText($('codeBig').textContent, $('codeCopy'));
+  $('codeBig').onclick = () => { copyText($('codeBig').textContent); toast(t('codeCopied'), $('codeBig').textContent); };
+  $('clearAcc').onclick = () => {
+    if (!confirm(t('clearConfirm'))) return;
+    accounts = []; saveAccounts(); current = null; clearInterval(pollTimer); renderLists();
+  };
+
+  // ---------- Steam ----------
+  function setSteps(active) {
+    const order = ['mail', 'captcha', 'verify', 'finish'];
+    $('steamSteps').classList.remove('hidden');
+    const idx = order.indexOf(active);
+    document.querySelectorAll('#steamSteps li').forEach(li => {
+      const i = order.indexOf(li.dataset.step);
+      li.classList.toggle('done', i < idx); li.classList.toggle('active', i === idx);
+    });
+  }
+  $('sLoginGen').onclick = () => { $('sLogin').value = steamLogin(); };
+  $('sPassGen').onclick = () => { $('sPass').value = randomPassword(10); };
+  $('steamGo').onclick = async () => {
+    let login = $('sLogin').value.trim(), pass = $('sPass').value;
+    if (!login) { login = steamLogin(); $('sLogin').value = login; }
+    if (!pass) { pass = randomPassword(10); $('sPass').value = pass; }
+    if (!/^[A-Za-z0-9_]{3,32}$/.test(login)) return setStatus('steamStatus', 'badLogin', 'err');
+    if (pass.length < 8) return setStatus('steamStatus', 'badPass', 'err');
+    const b = $('steamGo'); b.disabled = true; setStatus('steamStatus', 'creating');
+    try {
+      const acc = await createAccount();
+      acc.steam = { login, pass };
+      addAccount(acc);
+      steamFlow = acc;
+      selectAccount(acc);           // начинаем следить за письмами этого ящика
+      setSteps('captcha');
+      if (desktop) {
+        await desktop.openSteam({ email: acc.address, login, pass, lang: settings.lang });
+        setStatus('steamStatus', 'steamOpened');
+      } else {
+        await copyText(acc.address);
+        openLink(STEAM_JOIN);
+        setStatus('steamStatus', 'steamWeb');
+      }
+      $('sLogin').value = ''; $('sPass').value = '';
+    } catch (e) {
+      if (e instanceof TypeError) setStatus('steamStatus', 'noNet', 'err'); else setStatus('steamStatus', 'error', 'err', e.message);
+    } finally { b.disabled = false; }
+  };
+  if (desktop && desktop.onSteamState) desktop.onSteamState(s => {
+    if (!steamFlow) return;
+    if (s.stage === 'account' || s.stage === 'verified') { setSteps('finish'); setStatus('steamStatus', 'steamVerified', 'ok'); }
+    else if (s.stage === 'closed') { setStatus('steamStatus', 'steamClosed'); steamFlow = null; }
+  });
+
+  // ---------- настройки ----------
+  $('gear').onclick = () => { const p = $('settings'); p.classList.toggle('hidden'); $('gear').classList.toggle('on', !p.classList.contains('hidden')); };
+  document.querySelectorAll('#langSeg button').forEach(b => b.onclick = () => { settings.lang = b.dataset.lang; saveSettings(); applyLang(); });
+  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => setTab(b.dataset.tab));
+  for (const [id, key] of [['optAutocopy','autocopy'], ['optAutoverify','autoverify'], ['optSound','sound']]) {
+    $(id).checked = settings[key];
+    $(id).onchange = e => { settings[key] = e.target.checked; saveSettings(); };
+  }
+  $('optNotify').checked = settings.notify;
+  $('optNotify').onchange = async e => {
+    settings.notify = e.target.checked;
+    if (settings.notify && 'Notification' in window && Notification.permission !== 'granted') {
+      try { await Notification.requestPermission(); } catch {}
+      if (Notification.permission !== 'granted') { settings.notify = false; e.target.checked = false; toast(esc(t('notifDenied'))); }
+    }
+    saveSettings();
+  };
+
+  applyLang();
+  setTab(settings.tab === 'steam' ? 'steam' : 'mail');
+  showList();
+})();
+</script>
+</body>
+</html>
