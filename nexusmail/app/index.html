@@ -207,6 +207,20 @@
       <label class="sw"><input type="checkbox" id="optSound"><span></span></label></div>
     <div class="set-row"><span data-i18n="optNotify"></span>
       <label class="sw"><input type="checkbox" id="optNotify"><span></span></label></div>
+    <div id="recBlock" class="hidden" style="border-top:1px solid var(--line);padding-top:12px">
+      <div style="font-size:14px" data-i18n="recTitle"></div>
+      <div class="hint" style="margin-top:4px" data-i18n="recHint"></div>
+      <div class="field"><label for="recEmail" data-i18n="recEmail"></label>
+        <div class="row"><input id="recEmail" class="inp" type="email" maxlength="120" autocomplete="off" spellcheck="false" placeholder="name@gmail.com"></div></div>
+      <div class="field"><label for="recPass" data-i18n="recPass"></label>
+        <div class="row"><input id="recPass" class="inp" type="password" maxlength="40" autocomplete="off" spellcheck="false"></div></div>
+      <div class="acts" style="justify-content:flex-start;margin-top:10px">
+        <button class="btn solid" id="recSave" data-i18n="recSave"></button>
+        <button class="btn" id="recTest" data-i18n="recTest"></button>
+        <button class="btn" id="recHow" data-i18n="recHow"></button>
+      </div>
+      <div class="status" id="recStatus" style="text-align:left"></div>
+    </div>
   </section>
 
   <nav class="tabs">
@@ -386,6 +400,12 @@
       tagline:'Настоящая почта в один клик', settings:'Настройки', language:'Язык',
       optAutocopy:'Автокопирование нового кода', optAutoverify:'Автоподтверждение почты Steam',
       optSound:'Звук при новом письме', optNotify:'Уведомления Windows',
+      recTitle:'Резервная почта для Microsoft (Gmail)',
+      recHint:'Её программа сама впишет, когда Microsoft попросит «Добавить адрес электронной почты», и сама прочитает из неё код. Нужен пароль приложения Google (16 букв), а не обычный пароль. Он хранится только на этом компьютере в зашифрованном виде.',
+      recEmail:'Адрес Gmail', recPass:'Пароль приложения Google', recSave:'Сохранить', recTest:'Проверить', recHow:'Как получить пароль ↗',
+      recSaved:'Сохранено ✓', recPassSet:'пароль сохранён — впишите новый, чтобы заменить', recChecking:'Проверяем вход в Gmail…',
+      recOk:'Вход в Gmail работает ✓', recFail:'Не удалось войти: ', recBadEmail:'Введите адрес Gmail',
+      steamMailNeedsUser:'Microsoft просит подтверждение — завершите его в открывшемся окне Outlook',
       tabMail:'✉ Почта', tabSteam:'Steam',
       create:'Создать почту', creating:'Создаём ящик…', created:'Готово! Почта создана ✓',
       myBoxes:'Мои ящики', allBoxes:'← Все ящики', delete:'Удалить', clear:'Очистить всё',
@@ -431,6 +451,12 @@
       tagline:'Real email in one click', settings:'Settings', language:'Language',
       optAutocopy:'Auto-copy new codes', optAutoverify:'Auto-confirm Steam email',
       optSound:'Sound on new mail', optNotify:'Desktop notifications',
+      recTitle:'Backup email for Microsoft (Gmail)',
+      recHint:'The app types it in when Microsoft asks to “Add an email address” and reads the code from it by itself. You need a Google app password (16 letters), not your normal password. It is stored only on this computer, encrypted.',
+      recEmail:'Gmail address', recPass:'Google app password', recSave:'Save', recTest:'Test', recHow:'How to get the password ↗',
+      recSaved:'Saved ✓', recPassSet:'password saved — type a new one to replace it', recChecking:'Checking Gmail sign-in…',
+      recOk:'Gmail sign-in works ✓', recFail:'Sign-in failed: ', recBadEmail:'Enter a Gmail address',
+      steamMailNeedsUser:'Microsoft asks for confirmation — finish it in the Outlook window that opened',
       tabMail:'✉ Mail', tabSteam:'Steam',
       create:'Create email', creating:'Creating mailbox…', created:'Done! Mailbox created ✓',
       myBoxes:'My mailboxes', allBoxes:'← All mailboxes', delete:'Delete', clear:'Clear all',
@@ -953,7 +979,7 @@
       setSteps('captcha');
       if (desktop) {
         await desktop.openSteam({ email: acc.address, login, pass, lang: settings.lang });
-        if (own && settings.autoverify && desktop.watchOutlookSteam) desktop.watchOutlookSteam(ol.partition);
+        if (own && settings.autoverify && desktop.watchOutlookSteam) desktop.watchOutlookSteam(olData(ol.partition));
         setStatus('steamStatus', 'steamOpened');
       } else {
         await copyText(acc.address);
@@ -968,6 +994,7 @@
   if (desktop && desktop.onSteamState) desktop.onSteamState(s => {
     if (!steamFlow) return;
     if (s.stage === 'mailfound') { setSteps('verify'); setStatus('steamStatus', 'steamVerifying'); return; }
+    if (s.stage === 'mailneedsuser') { setStatus('steamStatus', 'steamMailNeedsUser', 'err'); return; }
     if (s.stage === 'mailtimeout') { setStatus('steamStatus', 'steamMailTimeout', 'err'); return; }
     if (s.stage === 'account' || s.stage === 'verified') { setSteps('finish'); setStatus('steamStatus', 'steamVerified', 'ok'); }
     else if (s.stage === 'closed') { setStatus('steamStatus', 'steamClosed'); steamFlow = null; }
@@ -1024,8 +1051,12 @@
     $('olDoneActs').classList.add('hidden');
     beep(); toast(esc(t('olCreated')));
   }
+  const olData = partition => {
+    const ol = outlooks.find(o => o.partition === partition) || {};
+    return { partition, email: ol.address || '', pass: ol.password || '', lang: settings.lang };
+  };
   function openOutlookMail(partition) {
-    if (desktop && desktop.openOutlook) desktop.openOutlook(partition);
+    if (desktop && desktop.openOutlook) desktop.openOutlook(olData(partition));
     else openLink('https://outlook.live.com/mail/0/');
   }
 
@@ -1122,6 +1153,32 @@
   applySrc();
   renderOutlook();
   olAutoAll();
+
+  // ---------- резервная почта Gmail (только в программе) ----------
+  async function loadRec() {
+    if (!desktop || !desktop.recoveryGet) return;
+    $('recBlock').classList.remove('hidden');
+    const r = await desktop.recoveryGet();
+    $('recEmail').value = r.email || '';
+    $('recPass').value = '';
+    $('recPass').placeholder = r.hasPass ? t('recPassSet') : 'abcd efgh ijkl mnop';
+  }
+  if (desktop && desktop.recoveryGet) {
+    $('recSave').onclick = async () => {
+      const email = $('recEmail').value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return setStatus('recStatus', 'recBadEmail', 'err');
+      const r = await desktop.recoverySet({ email, pass: $('recPass').value });
+      if (r.ok) { setStatus('recStatus', 'recSaved', 'ok'); loadRec(); } else setStatus('recStatus', 'recFail', 'err', r.error);
+    };
+    $('recTest').onclick = async () => {
+      if ($('recPass').value) await $('recSave').onclick();
+      setStatus('recStatus', 'recChecking');
+      const r = await desktop.recoveryTest();
+      if (r.ok) setStatus('recStatus', 'recOk', 'ok'); else setStatus('recStatus', 'recFail', 'err', r.error);
+    };
+    $('recHow').onclick = () => openLink('https://myaccount.google.com/apppasswords');
+    loadRec();
+  }
 
   // ---------- настройки ----------
   $('gear').onclick = () => { const p = $('settings'); p.classList.toggle('hidden'); $('gear').classList.toggle('on', !p.classList.contains('hidden')); };

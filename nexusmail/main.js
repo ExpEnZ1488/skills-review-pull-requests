@@ -1,5 +1,6 @@
-const { app, BrowserWindow, shell, Menu, ipcMain, session } = require('electron');
+const { app, BrowserWindow, shell, Menu, ipcMain, session, safeStorage } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 app.setAppUserModelId('com.nexusmail.app'); // нужно для уведомлений Windows
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -162,7 +163,17 @@ function outlookFillScript(d, lang) {
       return el.value === String(v);
     };
     let fields = 0, ok = 0;
-    const fill = (el, v) => { if (!el) return; fields++; if (setVal(el, v)) ok++; };
+    const fill = (el, v) => { if (!el || v === undefined || v === null || v === '') return; fields++; if (setVal(el, v)) ok++; };
+    const pageText = (document.body && document.body.innerText) || '';
+    // Страница «Добавление адреса электронной почты» (резервная почта для кодов безопасности)
+    // Страница «Введите код»
+    const boxes = inputs.filter(i => i.maxLength === 1 && /^(tel|text|number)$/.test(i.type));
+    const codeInput = q(['input[name="otc"]', '#iOttText', 'input[autocomplete="one-time-code"]', '#idTxtBx_SAOTCC_OTC'])
+                   || findIn(inputs.filter(i => i.type !== 'password' && i.type !== 'email'), /\\bcode\\b|введите код|^\\s*код\\b|\\botc\\b/i);
+    const codePage = !!codeInput || boxes.length >= 4;
+    const proofPage = !codePage && (/proofs\\/add|addproof/i.test(location.href) ||
+      /добавлени[ея] адреса электронной почты|оповещения системы безопасности|add (a |an )?(security |recovery )?email|security info|додавання адреси/i.test(pageText));
+    let codeFilled = false;
 
     const domSel = q(['select#liveDomainBoxList', 'select[name="LiveDomainBoxList"]']);
     const email = q(['#MemberName', '#usernameInput', 'input[name="MemberName"]', 'input[name="Email"]', 'input[type="email"]'])
@@ -173,7 +184,13 @@ function outlookFillScript(d, lang) {
       if ([...n.querySelectorAll('span,div,button,label,[role="combobox"],[role="button"],option')].some(x => vis(x) && domainText(x))) return true;
       if (/@(outlook|hotmail|live)\./i.test(n.textContent || '')) return true; } return false; };
     const pickerOnPage = [...document.querySelectorAll('button,[role="combobox"],[role="button"]')].some(x => vis(x) && domainText(x));
-    if (email) fill(email, (domSel || pickerOnPage || near(email)) ? d.local : d.email);
+    if (codePage) {
+      if (d.code && boxes.length >= 4) { fields++; boxes.forEach((b, i) => setVal(b, d.code[i] || '')); ok++; codeFilled = true; }
+      else if (d.code && codeInput) { fill(codeInput, d.code); codeFilled = true; }
+      else fields++; // кода ещё нет — «Далее» не нажимаем
+    } else if (proofPage) {
+      if (email && d.recovery) fill(email, d.recovery); else fields++;
+    } else if (email) fill(email, (domSel || pickerOnPage || near(email)) ? d.local : d.email);
     if (domSel) { const o = [...domSel.options].find(o => /outlook\.com/i.test(o.value + o.text)); if (o) setVal(domSel, o.value); }
 
     const pw = inputs.find(i => i.type === 'password');
@@ -208,7 +225,7 @@ function outlookFillScript(d, lang) {
       else box.click();
     };
     for (const [box, match, idx] of [[dayBox, t => isDay(t, d.bd), d.bd - 1], [monthBox, t => isMonth(t, d.bm), d.bm - 1]]) {
-      if (!box) continue;
+      if (!box || !d.bd || !d.bm) continue;
       fields++;
       if (!match(box.textContent.trim().toLowerCase())) await pick(box, match, idx);
       if (match(box.textContent.trim().toLowerCase())) ok++;
@@ -239,11 +256,95 @@ function outlookFillScript(d, lang) {
         if (btn) setTimeout(() => btn.click(), 800);
       }
     }
-    return { fields, ok };
+    // «Не выходить из системы?» — нажимаем «Да»
+    if (!fields && /stay signed in|не выходить из системы|залишатися в системі/i.test(pageText) && !window.__nxKmsi) {
+      const y = q(['#acceptButton', '#idSIButton9', 'button[data-testid="primaryButton"]', 'input[type="submit"]']);
+      if (y) { window.__nxKmsi = 1; setTimeout(() => y.click(), 600); }
+    }
+    return { fields, ok, proofPage, codePage, codeFilled };
   })()`;
 }
 
 const OUTLOOK_DONE_RE = /^https:\/\/(outlook\.live\.com|outlook\.office\.com|account\.microsoft\.com|www\.microsoft\.com\/[^/]+\/microsoft-365\/outlook)|^https:\/\/login\.live\.com\/ppsecure\/post\.srf/i;
+
+// ---------- Резервная почта Gmail: пароль приложения хранится только на этом ПК, зашифрован Windows (DPAPI) ----------
+const recoveryFile = () => path.join(app.getPath('userData'), 'recovery.json');
+function loadRecovery() {
+  try {
+    const j = JSON.parse(fs.readFileSync(recoveryFile(), 'utf8'));
+    let pass = '';
+    if (j.pass && safeStorage.isEncryptionAvailable()) { try { pass = safeStorage.decryptString(Buffer.from(j.pass, 'base64')); } catch {} }
+    return { email: String(j.email || ''), pass };
+  } catch { return { email: '', pass: '' }; }
+}
+function saveRecovery(email, pass) {
+  const cur = loadRecovery();
+  const keep = !pass && cur.email === email ? cur.pass : pass;
+  let enc = '';
+  if (keep) {
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('encryption unavailable');
+    enc = safeStorage.encryptString(keep).toString('base64');
+  }
+  fs.writeFileSync(recoveryFile(), JSON.stringify({ email, pass: enc }));
+}
+
+async function withImap(cred, fn) {
+  const { ImapFlow } = require('imapflow');
+  const client = new ImapFlow({ host: 'imap.gmail.com', port: 993, secure: true, auth: { user: cred.email, pass: cred.pass }, logger: false });
+  await client.connect();
+  try { return await fn(client); } finally { await client.logout().catch(() => {}); }
+}
+
+// Ищем свежий код безопасности Microsoft во «Входящих» и в «Спаме»
+async function fetchMsCode(sinceMs, used) {
+  if (process.env.NEXUS_FAKE_MS_CODE) return process.env.NEXUS_FAKE_MS_CODE; // для автотестов
+  const cred = loadRecovery();
+  if (!cred.email || !cred.pass) return null;
+  const { simpleParser } = require('mailparser');
+  return withImap(cred, async client => {
+    const boxes = ['INBOX'];
+    try { const junk = (await client.list()).find(b => b.specialUse === '\\Junk'); if (junk) boxes.push(junk.path); } catch {}
+    let best = null;
+    for (const box of boxes) {
+      let lock; try { lock = await client.getMailboxLock(box); } catch { continue; }
+      try {
+        const uids = (await client.search({ since: new Date(sinceMs - 24 * 3600 * 1000), from: 'microsoft' }, { uid: true })) || [];
+        for (const uid of uids.slice(-15)) {
+          const msg = await client.fetchOne(uid, { source: true, internalDate: true }, { uid: true });
+          const when = msg.internalDate ? new Date(msg.internalDate).getTime() : 0;
+          if (when < sinceMs - 90 * 1000) continue;
+          const p = await simpleParser(msg.source);
+          const text = (p.subject || '') + '\n' + (p.text || '');
+          const m = text.match(/(?:security code|code|код безопасности|код)[^0-9]{0,80}(\d{4,8})/i);
+          if (m && !used.has(m[1]) && (!best || when > best.when)) best = { code: m[1], when };
+        }
+      } finally { lock.release(); }
+    }
+    return best ? best.code : null;
+  });
+}
+
+// Помощник для страниц Microsoft (вход, резервная почта, код, «не выходить»)
+const MS_HOST_RE = /^https:\/\/(signup|login|account)\.live\.com\//i;
+async function msAssist(wc, d, st) {
+  const url = wc.getURL();
+  if (!MS_HOST_RE.test(url)) return null;
+  const rec = loadRecovery();
+  const r = await wc.executeJavaScript(outlookFillScript({ ...d, recovery: rec.email, code: st.code || '' }, d.lang));
+  if (r.proofPage) st.since = Date.now();
+  if (r.codePage) {
+    if (!st.since) st.since = Date.now() - 3 * 60 * 1000;
+    if (r.codeFilled && st.code) { st.used.add(st.code); st.code = ''; }
+    const now = Date.now();
+    if (!st.code && !st.fetching && (rec.pass || process.env.NEXUS_FAKE_MS_CODE) && now - (st.lastFetch || 0) > 6000) {
+      st.fetching = true; st.lastFetch = now;
+      fetchMsCode(st.since, st.used).then(c => { if (c) st.code = c; }).catch(e => { st.error = String(e && e.message || e); })
+        .finally(() => { st.fetching = false; });
+    }
+  }
+  return r;
+}
+const newAssistState = () => ({ used: new Set(), code: '', since: 0 });
 
 function openOutlookSignup(d) {
   const ses = outlookSession(d.partition);
@@ -253,13 +354,15 @@ function openOutlookSignup(d) {
   });
   externalLinks(ow.webContents);
   let done = false, sawFields = false, lastEmpty = 0;
+  const st = newAssistState();
   const finish = () => { if (!done) { done = true; sendOl({ partition: d.partition, stage: 'done' }); } };
   const tick = async () => {
-    if (ow.isDestroyed() || done) return;
+    if (ow.isDestroyed()) return;
     try {
       const url = ow.webContents.getURL();
-      if (OUTLOOK_DONE_RE.test(url)) return finish();
-      const r = await ow.webContents.executeJavaScript(outlookFillScript(d, d.lang));
+      if (OUTLOOK_DONE_RE.test(url)) finish();
+      const r = await msAssist(ow.webContents, d, st); // и после регистрации — резервная почта, код и т. п.
+      if (!r || done) return;
       if (r.fields) sawFields = true;
       // поля закончились, а мы ещё на странице регистрации — значит, сейчас капча
       if (sawFields && !r.fields && ++lastEmpty === 2) sendOl({ partition: d.partition, stage: 'captcha' });
@@ -273,8 +376,8 @@ function openOutlookSignup(d) {
   ow.loadURL(OUTLOOK_SIGNUP);
 }
 
-function openOutlookMail(partition) {
-  const ses = outlookSession(partition);
+function openOutlookMail(d) {
+  const ses = outlookSession(d.partition);
   const mw = new BrowserWindow({
     width: 1200, height: 860, title: 'Outlook — NexusMail', icon: ICON, autoHideMenuBar: true, backgroundColor: '#ffffff',
     webPreferences: { session: ses, contextIsolation: true, nodeIntegration: false, sandbox: true }
@@ -286,13 +389,19 @@ function openOutlookMail(partition) {
     else if (isHttp(real)) shell.openExternal(real);
     return { action: 'deny' };
   });
+  const st = newAssistState();
+  const timer = setInterval(() => { if (!mw.isDestroyed()) msAssist(mw.webContents, d, st).catch(() => {}); }, 1500);
+  mw.on('closed', () => clearInterval(timer));
   mw.loadURL(OUTLOOK_MAIL);
 }
 
 // Фоновая проверка почты Outlook: находим письмо Steam и сами открываем ссылку подтверждения
 const watchers = new Map();
-function watchOutlookForSteam(partition) {
+function watchOutlookForSteam(d) {
+  const partition = d.partition;
   if (watchers.has(partition)) return;
+  const st = newAssistState();
+  let msTicks = 0;
   const hw = new BrowserWindow({
     show: false, width: 1280, height: 900,
     webPreferences: { session: outlookSession(partition), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false }
@@ -325,12 +434,32 @@ function watchOutlookForSteam(partition) {
     ticks++;
     if (ticks > 225) { stop(); sendState({ stage: 'mailtimeout' }); return; } // ~15 минут
     if (ticks % 15 === 0) { fi = (fi + 1) % folders.length; hw.loadURL(folders[fi]); return; } // входящие <-> нежелательная
-    try { const r = await hw.webContents.executeJavaScript(script); if (r && r.link) found(r.link); } catch {}
+    try {
+      // Microsoft просит войти / резервную почту / код — заполняем; если застряли надолго — показываем окно
+      const a = await msAssist(hw.webContents, d, st);
+      if (a) { if (++msTicks === 12 && !hw.isVisible()) { hw.show(); sendState({ stage: 'mailneedsuser' }); } return; }
+      msTicks = 0;
+      const r = await hw.webContents.executeJavaScript(script); if (r && r.link) found(r.link);
+    } catch {}
   }, 4000);
   watchers.set(partition, stop);
   hw.loadURL(folders[0]);
 }
-ipcMain.handle('outlook:watchSteam', (_e, partition) => { if (okPartition(partition)) watchOutlookForSteam(partition); return true; });
+const mailData = x => ({ partition: String(x?.partition || ''), email: String(x?.email || ''), local: String(x?.email || '').split('@')[0],
+  pass: String(x?.pass || ''), lang: x?.lang === 'en' ? 'en' : 'ru' });
+ipcMain.handle('outlook:watchSteam', (_e, x) => { const d = mailData(x); if (okPartition(d.partition)) watchOutlookForSteam(d); return true; });
+
+ipcMain.handle('recovery:get', () => { const r = loadRecovery(); return { email: r.email, hasPass: !!r.pass }; });
+ipcMain.handle('recovery:set', (_e, x) => {
+  const email = String(x?.email || '').trim(), pass = String(x?.pass || '').replace(/\s+/g, '');
+  try { saveRecovery(email, pass); return { ok: true }; } catch (e) { return { ok: false, error: String(e.message || e) }; }
+});
+ipcMain.handle('recovery:test', async () => {
+  const cred = loadRecovery();
+  if (!cred.email || !cred.pass) return { ok: false, error: 'not configured' };
+  try { await withImap(cred, async c => { await c.mailboxOpen('INBOX'); }); return { ok: true }; }
+  catch (e) { return { ok: false, error: String((e && (e.responseText || e.message)) || e) }; }
+});
 
 ipcMain.handle('outlook:signup', (_e, data) => {
   if (!okPartition(data?.partition)) return false;
@@ -342,7 +471,7 @@ ipcMain.handle('outlook:signup', (_e, data) => {
   });
   return true;
 });
-ipcMain.handle('outlook:open', (_e, partition) => { if (okPartition(partition)) openOutlookMail(partition); return true; });
+ipcMain.handle('outlook:open', (_e, x) => { const d = mailData(x); if (okPartition(d.partition)) openOutlookMail(d); return true; });
 
 ipcMain.handle('steam:open', (_e, data) => {
   const clean = {
