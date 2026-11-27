@@ -256,6 +256,24 @@ function outlookFillScript(d, lang) {
         if (btn) setTimeout(() => btn.click(), 800);
       }
     }
+    // «Помогите защитить свою учетную запись» → «Добавить адрес» (если резервная почта задана в настройках)
+    const helpPage = /помогите защитить|help (us )?protect your account|допоможіть захистити|protect your account/i.test(pageText);
+    if (!fields && helpPage && d.recovery && window.__nxHelp !== location.href) {
+      const btns = [...document.querySelectorAll('button, input[type="submit"], a[role="button"], [role="button"]')].filter(vis);
+      const add = btns.find(b => /добавить адрес|добавить почту|add (an )?email|add (a )?(security )?address|додати адрес/i.test(b.textContent || b.value || ''))
+               || q(['button[data-testid="primaryButton"]', '#iNext', '#idSubmit_ProofUp_Redirect', 'button[type="submit"]', 'input[type="submit"]']);
+      if (add) { window.__nxHelp = location.href; setTimeout(() => add.click(), 700); }
+    }
+
+    // Резервная почта не задана — подсказываем, где её указать
+    const banner = document.getElementById('nexus-banner');
+    if (banner && (helpPage || proofPage) && !d.recovery) {
+      banner.textContent = ${JSON.stringify(lang === 'en'
+        ? 'Microsoft asks for a backup email. Enter your Gmail and Google app password in NexusMail settings (⚙) — then this step is done automatically.'
+        : 'Microsoft просит резервную почту. Впишите свой Gmail и пароль приложения Google в настройках NexusMail (⚙) — тогда этот шаг пройдёт сам.')};
+      banner.style.borderColor = '#ff4d8d'; banner.style.color = '#ff9fc0';
+    }
+
     // «Не выходить из системы?» — нажимаем «Да»
     if (!fields && /stay signed in|не выходить из системы|залишатися в системі/i.test(pageText) && !window.__nxKmsi) {
       const y = q(['#acceptButton', '#idSIButton9', 'button[data-testid="primaryButton"]', 'input[type="submit"]']);
